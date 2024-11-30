@@ -1,4 +1,4 @@
-#!/usr/bin/python3 
+#!/usr/local/bin/python3
 
 from datetime import datetime, timedelta
 from astral import LocationInfo
@@ -6,11 +6,17 @@ from astral.sun import sun
 import pytz
 import os
 
+def as_local_time(t):
+    return t.astimezone(pytz.timezone('America/New_York'))
+
 def run_script(run_time):
-  command = f"echo '/home/fogcat5/youtube-dl/save_video.sh' | at {run_time.strftime('%I:%M %p')}"
-  print(command)
-  os.system(command)
-  
+    local_run_time = as_local_time(run_time)
+    if datetime.now(pytz.timezone('US/Pacific')) > local_run_time:
+        print(f"past {run_time} not scheduling today")
+        return
+    command = f"echo '/app/gcloud_upload.sh' | at {local_run_time.strftime('%I:%M %p')}"
+    print(command)
+    os.system(command)
 
 location = LocationInfo("Seacliff", "USA", "America/Los_Angeles", 36.9741, -121.9158)
 local_tz = pytz.timezone(location.timezone)
@@ -18,15 +24,10 @@ local_tz = pytz.timezone(location.timezone)
 today = datetime.now(local_tz)
 s = sun(location.observer, date=today)
 
-sunset_utc = s['sunset']
-sunset_local = sunset_utc.astimezone(local_tz)
+sunset_local = as_local_time(s['sunset'])
+sunrise_local = as_local_time(s['sunrise'])
 
-run_time = sunset_local - timedelta(minutes=15)
-if today > run_time:
-    print("not scheduling - too late today")
-    exit(0)
-
-run_script(run_time)
+run_script(sunrise_local)
+run_script(sunset_local - timedelta(minutes=15))
 run_script(sunset_local)
-
-print(f"Task scheduled for {run_time.strftime('%Y-%m-%d %H:%M:%S')}")
+os.system("atq")

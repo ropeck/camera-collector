@@ -14,4 +14,5 @@ bash /app/save_video.sh
 gsutil cp /app/*.mp4 gs://fogcat-webcam/
 
 ls -l *.mp4
+rm *.mp4
 echo "File uploaded to GCS successfully!"
