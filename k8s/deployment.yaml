@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: camera-collector
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: camera-collector
+  template:
+    metadata:
+      labels:
+        app: camera-collector
+    spec:
+      containers:
+      - name: camera-collector
+        image: fogcat5/camera-collector:latest
+        imagePullPolicy: Always
+        volumeMounts:
+        - name: gcp-credentials
+          mountPath: /app/service-account-key.json
+          subPath: service-account-key.json
+        env:
+        - name: GOOGLE_APPLICATION_CREDENTIALS
+          value: "/app/service-account-key.json"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "250m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+      volumes:
+      - name: gcp-credentials
+        secret:
+          secretName: gcp-credentials
