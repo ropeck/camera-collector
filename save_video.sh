@@ -1,12 +1,12 @@
 #!/bin/bash
 
-URL=https://www.youtube.com/watch?v=hXtYKDio1rQ
+URL="https://www.youtube.com/watch?v=hXtYKDio1rQ"
 VIDEO=seacliff-$(date -Iminutes).mp4
 TMP=/tmp/$$.mp4
 
 yt-dlp --get-url -f best $URL > stream-url
 rm -f $VIDEO $TMP
-ffmpeg -i $(cat stream-url) -t 15 $TMP
+ffmpeg -i "$(cat stream-url)" -t 15 $TMP
 mv $TMP $VIDEO
 
 # https://docs.google.com/document/d/1kXs8_XJFD7oJsMW_Re105ymWb5nXnJNSQe4ze4zb2yI/edit?usp=sharing
