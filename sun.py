@@ -7,7 +7,7 @@ import pytz
 import os
 
 def as_local_time(t):
-    return t.astimezone(pytz.timezone('America/New_York'))
+    return t.astimezone(pytz.timezone(os.getenv("TZ", "America/Los_Angeles")))
 
 def run_script(run_time):
     local_run_time = as_local_time(run_time)
