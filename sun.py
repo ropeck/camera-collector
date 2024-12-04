@@ -14,7 +14,7 @@ def run_script(run_time):
     if datetime.now(pytz.timezone('US/Pacific')) > local_run_time:
         print(f"past {run_time} not scheduling today")
         return
-    command = f"echo '/app/gcloud_upload.sh' | at {local_run_time.strftime('%I:%M %p')}"
+    command = f"echo '(/app/gcloud_upload.sh 2>&1 </dev/null) >> /var/log/video' | at {local_run_time.strftime('%I:%M %p')}"
     print(command)
     os.system(command)
 

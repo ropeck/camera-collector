@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: camera-collector
-        image: fogcat5/camera-collector:0.3
+        image: fogcat5/camera-collector:latest
         imagePullPolicy: Always
         volumeMounts:
         - name: gcp-credentials
