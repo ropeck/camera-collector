@@ -1,5 +1,7 @@
 #!/bin/bash
 
+PATH=$PATH:/root/google-sdk/bin
+
 # Authenticate with Google Cloud using the service account key
 if [ -f "/app/service-account-key.json" ]; then
   gcloud auth activate-service-account --key-file=/app/service-account-key.json
