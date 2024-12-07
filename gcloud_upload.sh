@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# yt-dlp is in /usr/local/bin
+PATH=$PATH:/usr/sbin:/usr/bin:/bin:/usr/local/bin
 PATH=$PATH:/root/google-cloud-sdk/bin:/usr/sbin
 
 # Authenticate with Google Cloud using the service account key
