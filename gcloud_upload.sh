@@ -1,6 +1,6 @@
 #!/bin/bash
 
-PATH=$PATH:/root/google-sdk/bin
+PATH=$PATH:/root/google-cloud-sdk/bin:/usr/sbin
 
 # Authenticate with Google Cloud using the service account key
 if [ -f "/app/service-account-key.json" ]; then
