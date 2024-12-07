@@ -19,4 +19,4 @@ gsutil cp /app/*.mp4 gs://fogcat-webcam/
 
 ls -l *.mp4
 rm *.mp4
-echo "File uploaded to GCS successfully!"
+echo "$(/usr/bin/date) File uploaded to GCS successfully!"
