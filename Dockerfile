@@ -12,13 +12,16 @@ RUN apt-get update && apt-get install -y \
 
 RUN pip install astral pytz
 
-RUN apt-get update && apt-get install -y cron at
+RUN apt-get update && apt-get install -y cron at tzdata
 RUN crontab -l | { cat; echo "0 7 * * * /app/sun.py"; } | crontab -
 
 # Download and install Google Cloud SDK
 RUN curl https://sdk.cloud.google.com | bash
 RUN /root/google-cloud-sdk/install --quiet; echo "installed"
 ENV PATH="$PATH:/root/google-cloud-sdk/bin"
+
+# set the default timezone to Pacific instead of UTC
+RUN ln -sf /usr/share/zoneinfo/America/Los_Angeles /etc/localtime && echo "America/Los_Angeles" > /etc/timezone
 
 # Set the working directory
 WORKDIR /app

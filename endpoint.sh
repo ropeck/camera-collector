@@ -1,7 +1,8 @@
 #!/bin/bash
+# make sure the times in crontab and at jobs are in Pacific time, not UTC
+export TZ="America/Los_Angeles"
 
-# run at in the background and cron in the foreground
-
+# run atd in the background and cron in the foreground
 touch /var/log/cron
 
 /usr/sbin/atd
