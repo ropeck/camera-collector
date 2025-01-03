@@ -12,8 +12,8 @@ RUN apt-get update && apt-get install -y \
     pip install yt-dlp google-cloud-storage astral pytz && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Add the cron job to execute sun.py every day at 7 AM
-RUN echo "0 7 * * * /usr/bin/python3 /app/sun.py" | crontab -
+# Add the cron job to execute sun.py every day at 5 AM before sunrise
+RUN echo "0 5 * * * /app/sun.py" | crontab -
 
 # Download and install Google Cloud SDK
 RUN curl https://sdk.cloud.google.com | bash && \
