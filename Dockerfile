@@ -17,7 +17,6 @@ RUN echo "0 7 * * * /usr/bin/python3 /app/sun.py" | crontab -
 
 # Download and install Google Cloud SDK
 RUN curl https://sdk.cloud.google.com | bash && \
-    /root/google-cloud-sdk/install --quiet && \
     echo "installed"
 ENV PATH="$PATH:/root/google-cloud-sdk/bin"
 
