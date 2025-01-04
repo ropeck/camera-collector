@@ -13,9 +13,8 @@ fi
 gcloud config set project k8s-project --quiet
 bash /app/save_video.sh
 
-# Upload the file to GCS
-# Replace "your-bucket-name" and "your-object-path" with your bucket and file details
-gsutil cp /app/*.mp4 gs://fogcat-webcam/
+# upload to GCS bucket in directory by year/month
+gcloud storage cp /app/*.mp4 gs://fogcat-webcam/$(date +%Y/%m)/
 
 ls -l *.mp4
 rm *.mp4
