@@ -25,16 +25,6 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # Build and push Docker image
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: |
-            fogcat5/camera-collector:latest
-            fogcat5/camera-collector:${{ github.sha }}
-
       # Set up kubeconfig
       - name: Set up kubeconfig
         run: |
@@ -56,6 +46,17 @@ jobs:
 
       - name: Verify Kubernetes cluster access
         run: kubectl get nodes
+
+      # Build and push Docker image
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            fogcat5/camera-collector:latest
+            fogcat5/camera-collector:${{ github.sha }}
+
 
       - name: Deploy to Kubernetes
         run: |
