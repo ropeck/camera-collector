@@ -15,17 +15,13 @@ spec:
     spec:
       containers:
       - name: camera-collector
-        image: fogcat5/camera-collector:0.1.2
+        image: fogcat5/camera-collector:latest
         imagePullPolicy: Always
         volumeMounts:
         - name: gcp-credentials
           mountPath: /app/service-account-key.json
           subPath: service-account-key.json
         env:
-        - name: TZ
-          value: "America/Los_Angeles"
-        - name: GOOGLE_APPLICATION_CREDENTIALS
-          value: "/app/service-account-key.json"
         resources:
           requests:
             memory: "128Mi"
