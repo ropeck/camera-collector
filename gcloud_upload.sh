@@ -10,12 +10,16 @@ if [ -f "/app/service-account-key.json" ]; then
 fi
 
 # Set the default project (optional if your key file already contains the project ID)
-gcloud config set project k8s-project --quiet
+gcloud config set project k8s-project-441922 --quiet
 bash /app/save_video.sh
 
-# upload to GCS bucket in directory by year/month
-gcloud storage cp /app/*.mp4 gs://fogcat-webcam/$(date +%Y/%m)/
-
+echo "$(/usr/bin/date) uploading video $(ls *.mp4)
+pwd
 ls -l *.mp4
+
+# upload to GCS bucket in directory by year/month
+gcloud storage cp *.mp4 gs://fogcat-webcam/$(date +%Y/%m)/
+
+
 rm *.mp4
 echo "$(/usr/bin/date) File uploaded to GCS successfully!"
