@@ -31,4 +31,6 @@ jobs:
         with:
           context: .
           push: true
-          tags: fogcat5/camera-collector:latest
+          tags: |
+            your-dockerhub-username/your-repo-name:latest
+            your-dockerhub-username/your-repo-name:${{ github.sha }}
