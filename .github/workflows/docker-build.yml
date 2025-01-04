@@ -35,11 +35,27 @@ jobs:
             fogcat5/camera-collector:latest
             fogcat5/camera-collector:${{ github.sha }}
 
-      # Deploy to Kubernetes
-      - name: Set up kubectl
-        uses: azure/setup-kubectl@v3
+      # Set up kubeconfig
+      - name: Set up kubeconfig
+        run: |
+          echo "${{ secrets.KUBECONFIG_CONTENT }}" > kubeconfig
+          export KUBECONFIG=$(pwd)/kubeconfig
+
+
+      - name: Authenticate to GKE
+        uses: google-github-actions/auth@v1
         with:
-          version: 'latest'
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up GKE
+        uses: google-github-actions/get-gke-credentials@v1
+        with:
+          cluster_name: my-first-cluster
+          location: us-west1-a
+          project_id: k8s-project
+
+      - name: Verify Kubernetes cluster access
+        run: kubectl get nodes
 
       - name: Deploy to Kubernetes
         run: |
