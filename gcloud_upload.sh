@@ -11,6 +11,7 @@ fi
 
 # Set the default project (optional if your key file already contains the project ID)
 gcloud config set project k8s-project-441922 --quiet
+cd /app
 bash /app/save_video.sh
 
 echo "$(/usr/bin/date) uploading video $(ls *.mp4)"
