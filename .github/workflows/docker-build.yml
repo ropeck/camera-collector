@@ -33,4 +33,4 @@ jobs:
           push: true
           tags: |
             fogcat5/camera-collector:latest
-            fogcat5/camera-collector::${{ github.sha }}
+            fogcat5/camera-collector:${{ github.sha }}
