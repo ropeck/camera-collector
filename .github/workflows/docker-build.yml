@@ -34,3 +34,14 @@ jobs:
           tags: |
             fogcat5/camera-collector:latest
             fogcat5/camera-collector:${{ github.sha }}
+
+      # Deploy to Kubernetes
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      - name: Deploy to Kubernetes
+        run: |
+          kubectl set image deployment/camera-collector camera-collector=fogcat5/camera-collector:${{ github.sha }}
+          kubectl rollout status deployment/camera-collector
