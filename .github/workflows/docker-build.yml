@@ -25,7 +25,6 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-
       # Set up kubeconfig
       - name: Set up kubeconfig
         run: |
