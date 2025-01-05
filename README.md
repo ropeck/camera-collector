@@ -6,6 +6,9 @@ The Camera Collector project automates the process of capturing frames from a li
 generating time-lapse videos. The system uses Kubernetes CronJobs for scheduling and integrates Google Cloud Storage (
 GCS) for storage and scalability.
 
+The code is intended to be a demonstration of how to use a repository with CICD github, docker and dockerhub automation
+along with k8s. The code collects video and makes sunset snippets. 
+
 ## Features
 
 - **Automated Frame Collection**: Captures frames from a YouTube live stream or IP camera feed at regular intervals.
