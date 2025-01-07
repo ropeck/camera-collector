@@ -11,6 +11,7 @@ def as_local_time(t):
 
 def run_script(run_time):
     # this is a good place for logging CC-1
+
     local_run_time = as_local_time(run_time)
     if datetime.now(pytz.timezone('US/Pacific')) > local_run_time:
         print(f"past {run_time} not scheduling today")
