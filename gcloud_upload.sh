@@ -20,7 +20,7 @@ pwd
 ls -l $video
 
 # upload to GCS bucket in directory by year/month
-gcloud storage cp *.mp4 "gs://fogcat-webcam/$(date +%Y/%m)/"
+gcloud storage cp $video "gs://fogcat-webcam/$(date +%Y/%m)/"
 
 
 rm $video
