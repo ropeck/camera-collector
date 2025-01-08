@@ -11,16 +11,17 @@ fi
 
 # Set the default project (optional if your key file already contains the project ID)
 gcloud config set project k8s-project-441922 --quiet
-cd /app
+cd /app || exit
 bash /app/save_video.sh
 
-echo "$(/usr/bin/date) uploading video $(ls *.mp4)"
+video="$(ls ./*.mp4)"
+echo "$(/usr/bin/date) uploading video $video"
 pwd
-ls -l *.mp4
+ls -l $video
 
 # upload to GCS bucket in directory by year/month
-gcloud storage cp *.mp4 gs://fogcat-webcam/$(date +%Y/%m)/
+gcloud storage cp *.mp4 "gs://fogcat-webcam/$(date +%Y/%m)/"
 
 
-rm *.mp4
+rm $video
 echo "$(/usr/bin/date) File uploaded to GCS successfully!"

@@ -8,4 +8,6 @@ touch /var/log/cron
 /usr/sbin/atd
 /etc/init.d/inetutils-syslogd start
 /app/sun.py
-/usr/sbin/cron & tail -f /var/log/syslog | grep --line-buffered CRON
+/usr/sbin/cron & \
+  /usr/bin/tail -f /var/log/syslog | \
+    /usr/bin/grep --line-buffered CRON
