@@ -1,7 +1,7 @@
 #!/bin/bash
 
 log () {
-  msg="$(/usr/bin/date) $1"
+  msg="$(/usr/bin/date) $*"
   echo "$msg"
   echo "$msg" >> /var/log/camera-collector
 }
