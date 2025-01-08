@@ -17,6 +17,7 @@ cd /app
 flock -n /tmp/video.lock /app/save_video.sh || \
   ( echo "$(/usr/bin/date) video lock busy - exiting"; exit)
 
+
 echo "$(/usr/bin/date) uploading video $(ls *.mp4)"
 pwd
 ls -l *.mp4
