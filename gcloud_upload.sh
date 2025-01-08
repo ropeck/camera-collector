@@ -16,10 +16,11 @@ fi
 
 # Set the default project (optional if your key file already contains the project ID)
 gcloud config set project k8s-project-441922 --quiet
-cd /app || exit
+cd /app
 
-log "saving current video"
-bash /app/save_video.sh
+# only run one video collection at a time, coordinated by flock
+flock -n /tmp/video.lock /app/save_video.sh || \
+  ( echo "$(/usr/bin/date) video lock busy - exiting"; exit)
 
 video="$(ls ./*.mp4 | sed -e 's-.*/--')"
 gcspath="gs://fogcat-webcam/$(date +%Y/%m)/$video"
