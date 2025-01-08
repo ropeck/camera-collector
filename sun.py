@@ -18,6 +18,8 @@ def run_script(run_time):
         return
     command = f"/usr/bin/echo '(/app/gcloud_upload.sh 2>&1 </dev/null) >> /var/log/video' | /usr/bin/at {local_run_time.strftime('%I:%M %p')}"
     print(command)
+    with open("/var/log/camera-collector", "a") as f:
+        f.write(f"{str(datetime.now())} {command}\n")
     os.system(command)
 
 location = LocationInfo("Seacliff", "USA", "America/Los_Angeles", 36.9741, -121.9158)

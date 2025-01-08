@@ -1,5 +1,10 @@
 #!/bin/bash
 
+log () {
+  msg="$(/usr/bin/date) $1"
+  echo "$msg"
+  echo "$msg" >> /var/log/camera-collector
+}
 # yt-dlp is in /usr/local/bin
 PATH=$PATH:/usr/sbin:/usr/bin:/bin:/usr/local/bin
 PATH=$PATH:/root/google-cloud-sdk/bin:/usr/sbin
@@ -15,13 +20,11 @@ cd /app || exit
 bash /app/save_video.sh
 
 video="$(ls ./*.mp4)"
-echo "$(/usr/bin/date) uploading video $video"
-pwd
-ls -l $video
+gcspath="gs://fogcat-webcam/$(date +%Y/%m)/"
+log "uploading video $video to $gcspath"
 
 # upload to GCS bucket in directory by year/month
-gcloud storage cp $video "gs://fogcat-webcam/$(date +%Y/%m)/"
+gcloud storage cp "$video" "$gcspath"
 
-
-rm $video
-echo "$(/usr/bin/date) File uploaded to GCS successfully!"
+rm "$video"
+log "File uploaded to GCS successfully!"
