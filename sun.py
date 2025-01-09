@@ -20,7 +20,8 @@ def run_script(run_time):
     print(command)
     with open("/var/log/camera-collector", "a") as f:
         t=datetime.now(pytz.timezone(os.getenv("TZ", "America/Los_Angeles")))
-        f.write(f"{t} {command}\n")
+        timestamp = t.strftime("[%a %b %d %H:%M:%S PST %Y]")
+        f.write(f"{timestamp} {command}\n")
     os.system(command)
 
 location = LocationInfo("Seacliff", "USA", "America/Los_Angeles", 36.9741, -121.9158)
