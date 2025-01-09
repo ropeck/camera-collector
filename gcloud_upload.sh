@@ -21,7 +21,7 @@ cd /app || exit
 log "saving current video"
 bash /app/save_video.sh
 
-video="$(ls ./*.mp4) | sed -e 's-.*/--'"
+video="$(ls ./*.mp4 | sed -e 's-.*/--')"
 gcspath="gs://fogcat-webcam/$(date +%Y/%m)/$video"
 log "uploading video $video to $gcspath"
 
