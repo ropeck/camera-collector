@@ -6,22 +6,23 @@ from astral.sun import sun
 import pytz
 import os
 
+def log(message):
+    print(message)
+    with open("/var/log/camera-collector", "a") as f:
+        t = datetime.now(pytz.timezone(os.getenv("TZ", "America/Los_Angeles")))
+        timestamp = t.strftime("[%a %b %d %H:%M:%S PST %Y]")
+        f.write(f"{timestamp} {message}\n")
+
 def as_local_time(t):
     return t.astimezone(pytz.timezone(os.getenv("TZ", "America/Los_Angeles")))
 
 def run_script(run_time):
-    # this is a good place for logging CC-1
-
     local_run_time = as_local_time(run_time)
     if datetime.now(pytz.timezone('US/Pacific')) > local_run_time:
-        print(f"past {run_time} not scheduling today")
+        log(f"past {run_time} not scheduling today")
         return
     command = f"/usr/bin/echo '(/app/gcloud_upload.sh 2>&1 </dev/null) >> /var/log/video' | /usr/bin/at {local_run_time.strftime('%I:%M %p')}"
-    print(command)
-    with open("/var/log/camera-collector", "a") as f:
-        t=datetime.now(pytz.timezone(os.getenv("TZ", "America/Los_Angeles")))
-        timestamp = t.strftime("[%a %b %d %H:%M:%S PST %Y]")
-        f.write(f"{timestamp} {command}\n")
+    log(command)
     os.system(command)
 
 location = LocationInfo("Seacliff", "USA", "America/Los_Angeles", 36.9741, -121.9158)
