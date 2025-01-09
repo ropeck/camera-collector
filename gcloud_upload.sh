@@ -1,7 +1,7 @@
 #!/bin/bash
 
 log () {
-  msg="$(/usr/bin/date) $*"
+  msg="[$(/usr/bin/date)] $*"
   echo "$msg"
   echo "$msg" >> /var/log/camera-collector
 }
@@ -17,10 +17,12 @@ fi
 # Set the default project (optional if your key file already contains the project ID)
 gcloud config set project k8s-project-441922 --quiet
 cd /app || exit
+
+log "saving current video"
 bash /app/save_video.sh
 
 video="$(ls ./*.mp4)"
-gcspath="gs://fogcat-webcam/$(date +%Y/%m)/"
+gcspath="gs://fogcat-webcam/$(date +%Y/%m)/$video"
 log "uploading video $video to $gcspath"
 
 # upload to GCS bucket in directory by year/month
