@@ -25,6 +25,8 @@ def run_script(run_time):
     log(command)
     os.system(command)
 
+log("starting collection scheduling")
+
 location = LocationInfo("Seacliff", "USA", "America/Los_Angeles", 36.9741, -121.9158)
 local_tz = pytz.timezone(location.timezone)
 
