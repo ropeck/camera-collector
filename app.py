@@ -25,38 +25,49 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+# Track active job UUIDs
+active_jobs = set()
 
 # Async subprocess function
 async def run_async_subprocess(job_id: str):
     """
     Run a subprocess asynchronously and send updates via WebSocket.
     """
-    command = ["./gcloud_upload.sh"]
-    process = await asyncio.create_subprocess_exec(
-        *command,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
-    )
+    try:
+        # Add the job ID to the active jobs set
+        active_jobs.add(job_id)
 
-    # Notify that the job has started
-    await manager.send_message(job_id, f"Job {job_id} started.")
+        command = ["./gcloud_upload.sh"]  # Replace with your actual command (e.g., ffmpeg)
+        process = await asyncio.create_subprocess_exec(
+            *command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
 
-    # Read stdout and stderr asynchronously
-    while True:
-        line = await process.stdout.readline()
-        if line:
-            await manager.send_message(job_id, f"Output: {line.decode().strip()}")
-        elif process.returncode is not None:  # Process has finished
-            break
+        # Notify that the job has started
+        await manager.send_message(job_id, f"Job {job_id} started.")
 
-    # Wait for the process to finish
-    stdout, stderr = await process.communicate()
+        # Read stdout and send updates
+        while True:
+            line = await process.stdout.readline()
+            if line:
+                await manager.send_message(job_id, f"Output: {line.decode().strip()}")
+            elif process.returncode is not None:  # Process has finished
+                break
 
-    # Notify on completion or error
-    if process.returncode == 0:
-        await manager.send_message(job_id, f"Job {job_id} completed successfully.")
-    else:
-        await manager.send_message(job_id, f"Job {job_id} failed with error: {stderr.decode().strip()}")
+        # Wait for the process to finish
+        stdout, stderr = await process.communicate()
+
+        # Notify on completion or error
+        if process.returncode == 0:
+            await manager.send_message(job_id, f"Job {job_id} completed successfully.")
+        else:
+            await manager.send_message(job_id, f"Job {job_id} failed with error: {stderr.decode().strip()}")
+    except Exception as e:
+        await manager.send_message(job_id, f"Error with Job ID {job_id}: {str(e)}")
+    finally:
+        # Remove the job ID from the active jobs set
+        active_jobs.discard(job_id)
 
 
 @app.get("/")
@@ -77,6 +88,14 @@ async def collect_stream():
 
     # Return the job ID to the client
     return JSONResponse({"job_id": job_id, "message": f"Collection started with Job ID {job_id}"})
+
+
+@app.get("/active-collections")
+async def get_active_collections():
+    """
+    Retrieve the list of currently active collection job IDs.
+    """
+    return JSONResponse({"active_jobs": list(active_jobs)})
 
 
 @app.websocket("/ws/{job_id}")
