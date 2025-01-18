@@ -21,7 +21,7 @@ def run_script(run_time):
     if datetime.now(pytz.timezone('US/Pacific')) > local_run_time:
         log(f"past {run_time} not scheduling today")
         return
-    command = f"/usr/bin/echo '(/usr/bin/python3 /app/start_collection.py 2>&1 </dev/null) >> /var/log/video' | /usr/bin/at {local_run_time.strftime('%I:%M %p')}"
+    command = f"/usr/bin/echo '(/usr/local/bin/python3 /app/start_collection.py 2>&1 </dev/null) >> /var/log/video' | /usr/bin/at {local_run_time.strftime('%I:%M %p')}"
     log(command)
     os.system(command)
 
