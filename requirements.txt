@@ -4,6 +4,7 @@ google-cloud-storage
 httpx         # For making async HTTP requests (e.g., test clients)
 pytest        # For API testing
 pytz
+requests
 uvicorn
 websockets    # For WebSocket testing and additional functionality
 yt-dlp
