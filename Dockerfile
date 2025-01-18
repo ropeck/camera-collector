@@ -32,6 +32,7 @@ RUN ln -sf /usr/share/zoneinfo/America/Los_Angeles /etc/localtime && \
 # Copy application files
 COPY app.py /app/app.py
 COPY sun.py /app/sun.py
+COPY start_collection.py /app/start_collection.py
 COPY save_video.sh /app/save_video.sh
 COPY gcloud_upload.sh /app/gcloud_upload.sh
 COPY endpoint.sh /app/endpoint.sh
