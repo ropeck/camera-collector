@@ -26,21 +26,29 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+# Store active collection jobs
+active_jobs = set()
+
 # Background task to process video collection
 async def collect_stream(job_id: str, manager: ConnectionManager):
     try:
+        # Add job to active_jobs
+        active_jobs.add(job_id)
         # Notify WebSocket client that collection has started
         await manager.send_message(job_id, f"Collection started with Job ID: {job_id}")
 
         # Simulated long-running task (e.g., replacing with an ffmpeg command)
         for i in range(1, 6):  # Simulate 5 steps of progress
-            await asyncio.sleep(1)  # Replace with actual work like frame processing
+            await asyncio.sleep(10)  # Replace with actual work like frame processing
             await manager.send_message(job_id, f"Progress: Step {i}/5")
 
         # Notify WebSocket client that collection has completed
         await manager.send_message(job_id, f"Collection completed for Job ID: {job_id}")
     except Exception as e:
         await manager.send_message(job_id, f"Error with Job ID {job_id}: {str(e)}")
+    finally:
+        # Remove job from active_jobs
+        active_jobs.discard(job_id)
 
 
 @app.get("/")
@@ -63,6 +71,14 @@ async def collect_stream_endpoint(background_tasks: BackgroundTasks):
     return JSONResponse({"job_id": job_id, "message": f"Collection started with Job ID {job_id}"})
 
 
+@app.get("/active-collections")
+async def get_active_collections():
+    """
+    Retrieve the list of currently active collection job IDs.
+    """
+    return JSONResponse({"active_jobs": list(active_jobs)})
+
+
 @app.websocket("/ws/{job_id}")
 async def websocket_endpoint(websocket: WebSocket, job_id: str):
     """
@@ -76,3 +92,9 @@ async def websocket_endpoint(websocket: WebSocket, job_id: str):
     except WebSocketDisconnect:
         manager.disconnect(job_id)
         print(f"WebSocket connection closed for Job ID: {job_id}")
+
+
+# Run the app on port 5000 when executed directly
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=5000)

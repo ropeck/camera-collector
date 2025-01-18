@@ -11,4 +11,7 @@ touch /var/log/camera-collector
 /app/sun.py
 /usr/sbin/cron
 
+echo "starting API service"
+/usr/local/bin/python3 app.py &
+
 /usr/bin/tail -f /var/log/camera-collector
