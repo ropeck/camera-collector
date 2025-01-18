@@ -1,7 +1,6 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, BackgroundTasks
-from fastapi.responses import JSONResponse
 import asyncio
-import subprocess
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse
 import uuid
 
 app = FastAPI()
@@ -11,44 +10,53 @@ class ConnectionManager:
     def __init__(self):
         self.active_connections: dict[str, WebSocket] = {}
 
-    async def connect(self, websocket: WebSocket, client_id: str):
+    async def connect(self, websocket: WebSocket, job_id: str):
         await websocket.accept()
-        self.active_connections[client_id] = websocket
+        self.active_connections[job_id] = websocket
 
-    def disconnect(self, client_id: str):
-        if client_id in self.active_connections:
-            del self.active_connections[client_id]
+    def disconnect(self, job_id: str):
+        if job_id in self.active_connections:
+            del self.active_connections[job_id]
 
-    async def send_message(self, client_id: str, message: str):
-        if client_id in self.active_connections:
-            await self.active_connections[client_id].send_text(message)
+    async def send_message(self, job_id: str, message: str):
+        if job_id in self.active_connections:
+            await self.active_connections[job_id].send_text(message)
 
 
 manager = ConnectionManager()
 
-# Store active collection jobs
-active_jobs = set()
 
-# Background task to process video collection
-async def collect_stream(job_id: str, manager: ConnectionManager):
-    try:
-        # Add job to active_jobs
-        active_jobs.add(job_id)
-        # Notify WebSocket client that collection has started
-        await manager.send_message(job_id, f"Collection started with Job ID: {job_id}")
+# Async subprocess function
+async def run_async_subprocess(job_id: str):
+    """
+    Run a subprocess asynchronously and send updates via WebSocket.
+    """
+    command = ["./gcloud_upload.sh"]
+    process = await asyncio.create_subprocess_exec(
+        *command,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE
+    )
 
-        # Simulated long-running task (e.g., replacing with an ffmpeg command)
-        for i in range(1, 6):  # Simulate 5 steps of progress
-            await asyncio.sleep(10)  # Replace with actual work like frame processing
-            await manager.send_message(job_id, f"Progress: Step {i}/5")
+    # Notify that the job has started
+    await manager.send_message(job_id, f"Job {job_id} started.")
 
-        # Notify WebSocket client that collection has completed
-        await manager.send_message(job_id, f"Collection completed for Job ID: {job_id}")
-    except Exception as e:
-        await manager.send_message(job_id, f"Error with Job ID {job_id}: {str(e)}")
-    finally:
-        # Remove job from active_jobs
-        active_jobs.discard(job_id)
+    # Read stdout and stderr asynchronously
+    while True:
+        line = await process.stdout.readline()
+        if line:
+            await manager.send_message(job_id, f"Output: {line.decode().strip()}")
+        elif process.returncode is not None:  # Process has finished
+            break
+
+    # Wait for the process to finish
+    stdout, stderr = await process.communicate()
+
+    # Notify on completion or error
+    if process.returncode == 0:
+        await manager.send_message(job_id, f"Job {job_id} completed successfully.")
+    else:
+        await manager.send_message(job_id, f"Job {job_id} failed with error: {stderr.decode().strip()}")
 
 
 @app.get("/")
@@ -57,26 +65,18 @@ async def root():
 
 
 @app.post("/collect")
-async def collect_stream_endpoint(background_tasks: BackgroundTasks):
+async def collect_stream():
     """
-    Start a new collection job. Returns a unique job ID.
+    Start a collection job and run asynchronously.
     """
     # Generate a unique job ID
     job_id = str(uuid.uuid4())
 
-    # Add the collection task to the background
-    background_tasks.add_task(collect_stream, job_id, manager)
+    # Schedule the subprocess task
+    asyncio.create_task(run_async_subprocess(job_id))
 
     # Return the job ID to the client
     return JSONResponse({"job_id": job_id, "message": f"Collection started with Job ID {job_id}"})
-
-
-@app.get("/active-collections")
-async def get_active_collections():
-    """
-    Retrieve the list of currently active collection job IDs.
-    """
-    return JSONResponse({"active_jobs": list(active_jobs)})
 
 
 @app.websocket("/ws/{job_id}")
@@ -87,14 +87,8 @@ async def websocket_endpoint(websocket: WebSocket, job_id: str):
     await manager.connect(websocket, job_id)
     try:
         while True:
-            # Keep the connection alive by waiting for messages (if needed).
+            # Keep the connection alive
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(job_id)
         print(f"WebSocket connection closed for Job ID: {job_id}")
-
-
-# Run the app on port 5000 when executed directly
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=5000)
