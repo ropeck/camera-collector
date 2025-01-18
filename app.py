@@ -92,3 +92,9 @@ async def websocket_endpoint(websocket: WebSocket, job_id: str):
     except WebSocketDisconnect:
         manager.disconnect(job_id)
         print(f"WebSocket connection closed for Job ID: {job_id}")
+
+
+# Run the app on port 5000 when executed directly
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=5000)
