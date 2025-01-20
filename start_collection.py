@@ -10,7 +10,7 @@ logging.basicConfig(
 )
 
 # API endpoint URL
-API_URL = "http://localhost:5000/collect"
+API_URL = "http://localhost:5000/collection/start"
 
 def start_collection():
     try:
