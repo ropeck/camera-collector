@@ -46,6 +46,8 @@ manager = ConnectionManager()
 # Track active job UUIDs
 active_jobs = defaultdict(str)
 
+def get_active_jobs():
+    return active_jobs
 
 # Async subprocess function
 async def run_async_subprocess(job_id: str):
@@ -58,7 +60,9 @@ async def run_async_subprocess(job_id: str):
         active_jobs[job_id] = "running"
         logging.info(f"Job {job_id} started.")
 
-        command = ["./gcloud_upload.sh"]  # Replace with your actual command (e.g., ffmpeg)
+        command = ["./gcloud_upload.sh"]
+        logging.info(f"Running command: {' '.join(command)} job ID: {job_id}")
+
         process = await asyncio.create_subprocess_exec(
             *command,
             stdout=asyncio.subprocess.PIPE,

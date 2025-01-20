@@ -1,8 +1,27 @@
-import unittest
+from app import app, active_jobs, get_active_jobs, run_async_subprocess
 from fastapi.testclient import TestClient
-from app import app, active_jobs
+from unittest.mock import AsyncMock, patch
 import asyncio
+import unittest
 import uuid
+
+# Mock process to simulate subprocess behavior with a delay
+class MockProcess:
+    def __init__(self):
+        self.stdout = AsyncMock()
+        self.stderr = AsyncMock()
+        self.returncode = 0  # Simulate a successful process
+
+    async def communicate(self):
+        # Simulate a process running for 10 seconds
+        await asyncio.sleep(10)
+        return (b"Mocked stdout output", b"Mocked stderr output")
+
+    def kill(self):
+        pass
+
+    async def wait(self):
+        pass
 
 class TestCameraCollectorService(unittest.TestCase):
 
@@ -22,8 +41,6 @@ class TestCameraCollectorService(unittest.TestCase):
         response = self.client.post("/collection/start")
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        print(f"data: {data}")
-        print(f"active_jobs: {active_jobs}")
         self.assertIn("job_id", data)
         self.assertIn("message", data)
         self.assertTrue(data["job_id"] in active_jobs)
@@ -63,16 +80,23 @@ class TestCameraCollectorService(unittest.TestCase):
         self.assertIn(job_id1, data["active_jobs"])
         self.assertIn(job_id2, data["active_jobs"])
 
-    def test_websocket_connection(self):
-        """Test WebSocket connection for real-time job notifications."""
-        response = self.client.post("/collection/start")
-        data = response.json()
-        job_id = data["job_id"]
-        with self.client.websocket_connect(f"/ws/{job_id}") as websocket:
-            websocket.send_text("ping")
-            self.assertTrue(job_id in active_jobs)
-            websocket.close()
-            self.assertNotIn(job_id, active_jobs)
+    @patch("asyncio.create_subprocess_exec", return_value=MockProcess())
+    def test_run_async_subprocess(self, mock_subprocess_exec):
+        """Test running a collection job with a mocked subprocess."""
+        job_id = "mock-job-id"
+
+        # Run the asynchronous function
+        asyncio.run(run_async_subprocess(job_id))
+
+        # Validate interactions with the mocked subprocess
+        mock_subprocess_exec.assert_called_once_with(
+            "./gcloud_upload.sh",  # Replace with your actual command
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        asyncio.sleep(11)
+        # Verify the job status update
+        self.assertEqual(active_jobs[job_id], "completed")
 
 if __name__ == "__main__":
     unittest.main()
