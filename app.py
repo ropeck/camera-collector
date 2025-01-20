@@ -160,7 +160,7 @@ async def get_active_collections():
     Retrieve the list of currently active collection job IDs.
     """
     logging.info("Fetching active collections.")
-    return JSONResponse({"active_jobs": list(active_jobs)})
+    return JSONResponse({"active_jobs": active_jobs})
 
 
 @app.websocket("/ws/{job_id}")
