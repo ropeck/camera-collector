@@ -10,7 +10,7 @@ logging.basicConfig(
 )
 
 # API endpoint URL
-API_URL = "http://localhost:5000/collection/start"
+API_URL = "https://api.fogcat5.com/collection/start"
 
 def start_collection():
     try:
