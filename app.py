@@ -110,7 +110,7 @@ def download_video(youtube_url: str, output_path: str):
             ],
             stdin=subprocess.PIPE
         )
-        ydl.download([stream_url])
+        ydl.download([youtube_url])
 
 
 def process_video_with_ffmpeg(input_path: str, output_path: str):
