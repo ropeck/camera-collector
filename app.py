@@ -249,8 +249,13 @@ async def start_collection_root(request: Request, youtube_url: Optional[str] = N
     """
     Redirects to the /collection/start/{youtube_url:path} with the default YouTube URL if none is provided.
     """
-    youtube_url = youtube_url or DEFAULT_YOUTUBE_URL
-    return await start_collection(youtube_url)
+    youtube_url = DEFAULT_YOUTUBE_URL
+
+    job_id = str(uuid.uuid4())
+    asyncio.create_task(collect_and_upload_video(job_id, youtube_url))
+    logging.info(f"Collection started with Job ID: {job_id}")
+    return JSONResponse({"job_id": job_id, "message": f"Collection started with Job ID {job_id}"})
+
 
 
 @app.get("/collection/status/{job_id}")
