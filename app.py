@@ -7,6 +7,7 @@ import uuid
 from datetime import datetime
 from google.cloud import storage
 import yt_dlp
+import subprocess
 
 app = FastAPI()
 
@@ -45,13 +46,40 @@ class ConnectionManager:
 
 
 manager = ConnectionManager()
-active_jobs = {}
+from collections import UserDict
+
+class ThreadSafeJobs(UserDict):
+    def __init__(self):
+        super().__init__()
+        self._lock = asyncio.Lock()
+
+    async def set_status(self, job_id: str, status: str):
+        """Safely set the status of a job."""
+        async with self._lock:
+            if job_id in self.data:
+                self.data[job_id]["status"] = status
+
+    async def set_job(self, job_id: str, job_info: dict):
+        async with self._lock:
+            self.data[job_id] = job_info
+
+    async def get_job(self, job_id: str):
+        async with self._lock:
+            return self.data.get(job_id)
+
+    async def delete_job(self, job_id: str):
+        async with self._lock:
+            if job_id in self.data:
+                del self.data[job_id]
+
+    async def get_all_jobs(self):
+        async with self._lock:
+            return {job_id: job_info for job_id, job_info in self.data.items()}
+
+active_jobs = ThreadSafeJobs()
 
 # Initialize Google Cloud Storage client
 storage_client = storage.Client.from_service_account_json(SERVICE_ACCOUNT_FILE)
-
-def get_active_jobs():
-    return active_jobs
 
 
 def download_video(youtube_url: str, output_path: str):
@@ -73,6 +101,32 @@ def download_video(youtube_url: str, output_path: str):
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([youtube_url])
+
+
+def process_video_with_ffmpeg(input_path: str, output_path: str):
+    """
+    Processes the video using FFmpeg to ensure compatibility with Safari.
+    """
+    if not os.path.exists(input_path):
+        raise FileNotFoundError(f"Input file {input_path} does not exist.")
+
+    logging.info(f"Processing video {input_path} with FFmpeg...")
+    command = [
+        "ffmpeg",
+        "-i", input_path,  # Input file
+        "-c:v", "libx264",  # Use H.264 video codec
+        "-c:a", "aac",  # Use AAC audio codec
+        "-movflags", "+faststart",  # Enable progressive streaming
+        "-y",  # Overwrite output file if it exists
+        output_path  # Output file
+    ]
+
+    process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if process.returncode != 0:
+        logging.error(f"FFmpeg processing failed: {process.stderr.decode()}")
+        raise RuntimeError(f"FFmpeg processing failed: {process.stderr.decode()}")
+
+    logging.info(f"Video processed successfully: {output_path}")
 
 
 def upload_to_gcs(video_path: str):
@@ -105,40 +159,49 @@ def format_job_info(job_id: str):
 
 async def collect_and_upload_video(job_id: str, youtube_url: str):
     try:
-        active_jobs[job_id] = {
+        await active_jobs.set_job(job_id, {
             "url": youtube_url,
             "time_started": datetime.now().isoformat(),
             "status": "running",
-        }
+        })
         logging.info(f"Job {job_id} started.")
         await manager.send_message(job_id, f"Job {job_id} started.")
 
-        video_path = f"/app/video_{job_id}.mp4"
-        download_video(youtube_url, video_path)
+        raw_video_path = f"/app/raw_video_{job_id}.mp4"
+        processed_video_path = f"/app/video_{job_id}.mp4"
+
+        # Download video
+        download_video(youtube_url, raw_video_path)
 
         # Ensure video file exists
-        if not os.path.exists(video_path):
+        if not os.path.exists(raw_video_path):
             raise FileNotFoundError("Video file was not created.")
 
         logging.info("Video download complete.")
 
-        upload_to_gcs(video_path)
+        # Process video with FFmpeg
+        process_video_with_ffmpeg(raw_video_path, processed_video_path)
+
+        # Upload processed video
+        upload_to_gcs(processed_video_path)
 
         # Clean up
-        os.remove(video_path)
+        os.remove(raw_video_path)
+        os.remove(processed_video_path)
 
-        active_jobs[job_id]["status"] = "completed"
+        await active_jobs.set_status(job_id, "completed")
         await manager.send_message(job_id, f"Job {job_id} completed successfully.")
         logging.info(f"Job {job_id} completed successfully.")
     except Exception as e:
         error_message = str(e)
-        active_jobs[job_id]["status"] = "error"
+        await active_jobs.set_status(job_id, "error")
         await manager.send_message(job_id, f"Error in Job {job_id}: {error_message}")
         logging.error(f"Error in Job {job_id}: {error_message}")
     finally:
         # Cleanup active job
-        if job_id in active_jobs and active_jobs[job_id]["status"] == "completed":
-            del active_jobs[job_id]
+        if job_info := await active_jobs.get_job(job_id):
+            if job_info["status"] == "completed":
+            await active_jobs.delete_job(job_id)
 
 
 @app.get("/")
@@ -163,7 +226,7 @@ async def collection_status(job_id: str):
     """
     Retrieve the status of a specific job ID.
     """
-    job_info = format_job_info(job_id)
+    job_info = await active_jobs.get_job(job_id)
     if not job_info:
         logging.warning(f"Job ID {job_id} not found.")
         raise HTTPException(status_code=404, detail="Job ID not found.")
@@ -177,7 +240,7 @@ async def get_active_collections():
     Retrieve the list of currently active collection job IDs.
     """
     logging.info("Fetching active collections.")
-    active_job_info = {job_id: format_job_info(job_id) for job_id in active_jobs}
+    active_job_info = await active_jobs.get_all_jobs()
     return JSONResponse({"active_jobs": active_job_info})
 
 
