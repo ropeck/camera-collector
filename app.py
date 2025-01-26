@@ -165,12 +165,14 @@ async def collect_and_upload_video(job_id: str, youtube_url: str):
     """
     Asynchronously collect and upload video by offloading blocking tasks.
     """
+    await active_jobs.set_status(job_id, "in progress")
     output_path = f"/app/video_{job_id}.mp4"
     try:
         # Offload the blocking subprocess call to a separate thread
         await asyncio.to_thread(run_subprocess_blocking, youtube_url, output_path)
 
         # Upload the video to GCS
+        await active_jobs.set_status(job_id, "uploading to gcs")
         await asyncio.to_thread(upload_to_gcs, output_path)
 
     except Exception as e:
@@ -198,6 +200,7 @@ async def start_collection(youtube_url: Optional[str] = None):
 
     job_id = str(uuid.uuid4())
     asyncio.create_task(collect_and_upload_video(job_id, youtube_url))
+    await active_jobs.set_job(job_id, {"status": "started", "youtube_url": youtube_url, "start_time": datetime.now().isoformat()})
     logging.info(f"Collection started with Job ID: {job_id}")
     return JSONResponse({"job_id": job_id, "message": f"Collection started with Job ID {job_id}"})
 
@@ -211,6 +214,7 @@ async def start_collection_root(request: Request, youtube_url: Optional[str] = N
 
     job_id = str(uuid.uuid4())
     asyncio.create_task(collect_and_upload_video(job_id, youtube_url))
+    await active_jobs.set_job(job_id, {"status": "started", "youtube_url": youtube_url, "start_time": datetime.now().isoformat()})
     logging.info(f"Collection started with Job ID: {job_id}")
     return JSONResponse({"job_id": job_id, "message": f"Collection started with Job ID {job_id}"})
 
