@@ -1,21 +1,24 @@
 import asyncio
+import os
+import logging
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.responses import JSONResponse
 import uuid
-import logging
-import os
 from datetime import datetime
 from collections import defaultdict
+from pathlib import Path
+from google.cloud import storage
+import yt_dlp
+import pytest
+from unittest.mock import AsyncMock, patch
 
 app = FastAPI()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 
-# Retrieve build time or set server start time
 BUILD_TIME = os.getenv("BUILD_TIME")
 SERVER_START_TIME = datetime.now().isoformat()
-
 
 # WebSocket connection manager
 class ConnectionManager:
@@ -42,109 +45,99 @@ class ConnectionManager:
 
 
 manager = ConnectionManager()
-
-# Track active job UUIDs
 active_jobs = defaultdict(str)
+
+# Initialize Google Cloud Storage client
+storage_client = storage.Client.from_service_account_json('/app/service-account-key.json')
+bucket_name = "fogcat-webcam"
 
 def get_active_jobs():
     return active_jobs
 
-# Async subprocess function
-async def run_async_subprocess(job_id: str):
-    """
-    Run a subprocess asynchronously and send updates via WebSocket.
-    """
-    process = None
+
+async def collect_and_upload_video(job_id: str):
     try:
-        # Add the job ID to the active jobs dictionary
         active_jobs[job_id] = "running"
         logging.info(f"Job {job_id} started.")
-
-        command = ["./gcloud_upload.sh"]
-        logging.info(f"Running command: {' '.join(command)} job ID: {job_id}")
-
-        process = await asyncio.create_subprocess_exec(
-            *command,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-
-        # Notify that the job has started
         await manager.send_message(job_id, f"Job {job_id} started.")
 
-        # Read stdout and send updates
-        while True:
-            line = await process.stdout.readline()
-            if line:
-                message = line.decode().strip()
-                await manager.send_message(job_id, f"Output: {message}")
-                logging.info(f"Job {job_id} output: {message}")
-            elif process.returncode is not None:  # Process has finished
-                break
+        video_path = "/app/video.mp4"
+        youtube_url = "https://www.youtube.com/watch?v=example"  # Replace with the desired URL
 
-        # Wait for the process to finish
-        stdout, stderr = await process.communicate()
+        # Download video using yt-dlp
+        logging.info(f"Starting video download from {youtube_url}...")
+        ydl_opts = {
+            'format': 'bestvideo+bestaudio/best',  # Best quality
+            'outtmpl': video_path,  # Output path
+            'postprocessors': [{
+                'key': 'FFmpegVideoConvertor',
+                'preferedformat': 'mp4'  # Convert to mp4
+            }],
+            'download_ranges': [
+                {'start_time': 0, 'end_time': 15}  # Download only the first 15 seconds
+            ]
+        }
 
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([youtube_url])
 
-        # Notify on completion or error
-        if process.returncode == 0:
-            await manager.send_message(job_id, f"Job {job_id} completed successfully.")
-            active_jobs[job_id] = "completed"
-            logging.info(f"Job {job_id} completed successfully.")
-        else:
-            error_message = stderr.decode().strip()
-            await manager.send_message(job_id, f"Job {job_id} failed with error: {error_message}")
-            active_jobs[job_id] = "failed"
-            logging.error(f"Job {job_id} failed with error: {error_message}")
+        # Ensure video file exists
+        if not os.path.exists(video_path):
+            raise FileNotFoundError("Video file was not created.")
+
+        logging.info("Video download complete.")
+
+        # Upload video to GCS
+        upload_to_gcs(video_path)
+
+        # Clean up
+        os.remove(video_path)
+
+        await manager.send_message(job_id, f"Job {job_id} completed successfully.")
+        active_jobs[job_id] = "completed"
+        logging.info(f"Job {job_id} completed successfully.")
     except Exception as e:
         error_message = str(e)
-        await manager.send_message(job_id, f"Error with Job ID {job_id}: {error_message}")
+        await manager.send_message(job_id, f"Error in Job {job_id}: {error_message}")
         active_jobs[job_id] = "error"
-        logging.error(f"Error with Job ID {job_id}: {error_message}")
+        logging.error(f"Error in Job {job_id}: {error_message}")
     finally:
-        # Ensure process resources are cleaned up
-        if process and process.returncode is None:
-            process.kill()
-            await process.wait()
-            logging.info(f"Process for Job {job_id} was forcefully terminated.")
-
-        # Safeguard against unintended deletions
-        current_status = active_jobs.get(job_id)
-        if current_status in ["running", "error"]:
+        # Cleanup active job
+        if job_id in active_jobs:
             del active_jobs[job_id]
+
+
+def upload_to_gcs(video_path: str):
+    """
+    Uploads a video to Google Cloud Storage.
+    """
+    bucket = storage_client.bucket(bucket_name)
+    timestamp_path = datetime.now().strftime("%Y/%m")
+    video_name = os.path.basename(video_path)
+    blob_name = f"{timestamp_path}/{video_name}"
+    blob = bucket.blob(blob_name)
+
+    logging.info(f"Uploading {video_path} to {blob_name} in bucket {bucket_name}...")
+    blob.upload_from_filename(video_path)
+    logging.info(f"File uploaded to GCS successfully at {blob_name}.")
 
 
 @app.get("/")
 async def root():
-    """
-    Root endpoint that returns API status and version information.
-    """
     version_info = ("BUILD_TIME: " + BUILD_TIME) if BUILD_TIME else ("SERVER_START_TIME: " + SERVER_START_TIME)
     return JSONResponse({"message": "Camera Collector API is running!", "version": version_info})
 
 
 @app.post("/collection/start")
 async def start_collection():
-    """
-    Start a collection job and run asynchronously.
-    """
-    # Generate a unique job ID
     job_id = str(uuid.uuid4())
-
-    # Schedule the subprocess task
-    asyncio.create_task(run_async_subprocess(job_id))
-
+    asyncio.create_task(collect_and_upload_video(job_id))
     logging.info(f"Collection started with Job ID: {job_id}")
-
-    # Return the job ID to the client
     return JSONResponse({"job_id": job_id, "message": f"Collection started with Job ID {job_id}"})
 
 
 @app.get("/collection/status/{job_id}")
 async def collection_status(job_id: str):
-    """
-    Retrieve the status of a specific job ID.
-    """
     if job_id in active_jobs:
         status = active_jobs[job_id]
         logging.info(f"Status for Job ID {job_id}: {status}")
@@ -156,30 +149,21 @@ async def collection_status(job_id: str):
 
 @app.get("/active-collections")
 async def get_active_collections():
-    """
-    Retrieve the list of currently active collection job IDs.
-    """
     logging.info("Fetching active collections.")
     return JSONResponse({"active_jobs": active_jobs})
 
 
 @app.websocket("/ws/{job_id}")
 async def websocket_endpoint(websocket: WebSocket, job_id: str):
-    """
-    WebSocket connection for real-time notifications for a specific job.
-    """
     await manager.connect(websocket, job_id)
     try:
         while True:
-            # Keep the connection alive
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(job_id)
         logging.info(f"WebSocket connection closed for Job ID: {job_id}")
 
 
-# Run the app on port 5000 when executed directly
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run(app, host="0.0.0.0", port=5000)

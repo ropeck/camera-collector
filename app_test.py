@@ -1,32 +1,34 @@
-from app import app, active_jobs, get_active_jobs, run_async_subprocess
-from fastapi.testclient import TestClient
-from unittest.mock import AsyncMock, patch
 import asyncio
-import unittest
 import uuid
+from unittest import TestCase
+from unittest.mock import AsyncMock, patch
+from app import collect_and_upload_video, bucket_name, app, active_jobs
+from fastapi.testclient import TestClient
 
-# Mock process to simulate subprocess behavior with a delay
-class MockProcess:
-    def __init__(self):
-        self.stdout = AsyncMock()
-        self.stderr = AsyncMock()
-        self.returncode = 0  # Simulate a successful process
-
-    async def communicate(self):
-        # Simulate a process running for 10 seconds
-        await asyncio.sleep(10)
-        return (b"Mocked stdout output", b"Mocked stderr output")
-
-    def kill(self):
-        pass
-
-    async def wait(self):
-        pass
-
-class TestCameraCollectorService(unittest.TestCase):
-
+class TestCameraCollector(TestCase):
     def setUp(self):
         self.client = TestClient(app)
+
+    def test_collect_and_upload_video(self):
+        """Unit test for collect_and_upload_video function."""
+        job_id = "test-job-id"
+
+        # Mock yt-dlp and Google Cloud Storage
+        with patch("yt_dlp.YoutubeDL") as mock_yt, patch("google.cloud.storage.Client") as mock_storage:
+            # Mock download method in yt-dlp
+            mock_yt.return_value.__enter__.return_value.download = AsyncMock()
+
+            # Mock GCS upload method
+            mock_storage.return_value.bucket.return_value.blob.return_value.upload_from_filename = AsyncMock()
+
+            # Run the function asynchronously
+            asyncio.run(collect_and_upload_video(job_id))
+
+            # Assertions to ensure methods were called as expected
+            mock_yt.return_value.__enter__.return_value.download.assert_called_once()
+            mock_storage.return_value.bucket.assert_called_once_with(bucket_name)
+            mock_storage.return_value.bucket.return_value.blob.return_value.upload_from_filename.assert_called_once()
+            print("Test passed: collect_and_upload_video.")
 
     def test_root_endpoint(self):
         """Test the root endpoint to check API status and version."""
@@ -43,7 +45,7 @@ class TestCameraCollectorService(unittest.TestCase):
         data = response.json()
         self.assertIn("job_id", data)
         self.assertIn("message", data)
-        self.assertTrue(data["job_id"] in active_jobs)
+        self.assertIn(data["job_id"], active_jobs)
         self.assertEqual(active_jobs[data["job_id"]], "running")
 
     def test_collection_status_valid_job(self):
@@ -79,24 +81,3 @@ class TestCameraCollectorService(unittest.TestCase):
         self.assertIn("active_jobs", data)
         self.assertIn(job_id1, data["active_jobs"])
         self.assertIn(job_id2, data["active_jobs"])
-
-    @patch("asyncio.create_subprocess_exec", return_value=MockProcess())
-    def test_run_async_subprocess(self, mock_subprocess_exec):
-        """Test running a collection job with a mocked subprocess."""
-        job_id = "mock-job-id"
-
-        # Run the asynchronous function
-        asyncio.run(run_async_subprocess(job_id))
-
-        # Validate interactions with the mocked subprocess
-        mock_subprocess_exec.assert_called_once_with(
-            "./gcloud_upload.sh",  # Replace with your actual command
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        asyncio.sleep(11)
-        # Verify the job status update
-        self.assertEqual(active_jobs[job_id], "completed")
-
-if __name__ == "__main__":
-    unittest.main()
