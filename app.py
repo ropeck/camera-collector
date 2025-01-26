@@ -181,6 +181,17 @@ async def collect_and_upload_video(job_id: str, youtube_url: str):
     ffmpeg_process = None
     output_path = "output_live.mp4"
 
+    # FFmpeg command to capture 15 seconds
+    ffmpeg_cmd = [
+        "ffmpeg",
+        "-i", "pipe:0",  # Input from stdin
+        "-t", "15",      # Limit duration to 15 seconds
+        "-c:v", "libx264",
+        "-c:a", "aac",
+        "-movflags", "+faststart",
+        output_path
+    ]
+
     try:
         # Start FFmpeg in a subprocess
         ffmpeg_process = subprocess.Popen(
