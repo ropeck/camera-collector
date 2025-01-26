@@ -9,8 +9,6 @@ from collections import defaultdict
 from pathlib import Path
 from google.cloud import storage
 import yt_dlp
-import pytest
-from unittest.mock import AsyncMock, patch
 
 app = FastAPI()
 
@@ -19,6 +17,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 
 BUILD_TIME = os.getenv("BUILD_TIME")
 SERVER_START_TIME = datetime.now().isoformat()
+
+BUCKET_NAME = os.getenv("BUCKET_NAME", "fogcat-webcam")
+SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE", "/app/service-account-key.json")
+DEFAULT_YOUTUBE_URL = os.getenv("DEFAULT_YOUTUBE_URL", "https://www.youtube.com/watch?v=hXtYKDio1rQ")
 
 # WebSocket connection manager
 class ConnectionManager:
@@ -45,41 +47,76 @@ class ConnectionManager:
 
 
 manager = ConnectionManager()
-active_jobs = defaultdict(str)
+active_jobs = {}
 
 # Initialize Google Cloud Storage client
-storage_client = storage.Client.from_service_account_json('/app/service-account-key.json')
-bucket_name = "fogcat-webcam"
+storage_client = storage.Client.from_service_account_json(SERVICE_ACCOUNT_FILE)
 
 def get_active_jobs():
     return active_jobs
 
 
-async def collect_and_upload_video(job_id: str):
+def download_video(youtube_url: str, output_path: str):
+    """
+    Downloads a video from YouTube using yt-dlp.
+    """
+    logging.info(f"Starting video download from {youtube_url}...")
+    ydl_opts = {
+        'format': 'bestvideo+bestaudio/best',
+        'outtmpl': output_path,
+        'postprocessors': [{
+            'key': 'FFmpegVideoConvertor',
+            'preferedformat': 'mp4'
+        }],
+        'download_ranges': [
+            {'start_time': 0, 'end_time': 15}
+        ]
+    }
+
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl.download([youtube_url])
+
+
+def upload_to_gcs(video_path: str):
+    """
+    Uploads a video to Google Cloud Storage.
+    """
+    bucket = storage_client.bucket(BUCKET_NAME)
+    timestamp_path = datetime.now().strftime("%Y/%m")
+    video_name = os.path.basename(video_path)
+    blob_name = f"{timestamp_path}/{video_name}"
+    blob = bucket.blob(blob_name)
+
+    logging.info(f"Uploading {video_path} to {blob_name} in bucket {BUCKET_NAME}...")
+    blob.upload_from_filename(video_path)
+    logging.info(f"File uploaded to GCS successfully at {blob_name}.")
+
+
+def format_job_info(job_id: str):
+    """Formats job information for API responses."""
+    job_info = active_jobs.get(job_id, None)
+    if not job_info:
+        return None
+    return {
+        "job_id": job_id,
+        "url": job_info.get("url"),
+        "time_started": job_info.get("time_started"),
+        "status": job_info.get("status"),
+    }
+
+
+async def collect_and_upload_video(job_id: str, youtube_url: str):
     try:
-        active_jobs[job_id] = "running"
+        active_jobs[job_id] = {
+            "url": youtube_url,
+            "time_started": datetime.now().isoformat(),
+            "status": "running",
+        }
         logging.info(f"Job {job_id} started.")
         await manager.send_message(job_id, f"Job {job_id} started.")
 
-        video_path = "/app/video.mp4"
-        youtube_url = "https://www.youtube.com/watch?v=example"  # Replace with the desired URL
-
-        # Download video using yt-dlp
-        logging.info(f"Starting video download from {youtube_url}...")
-        ydl_opts = {
-            'format': 'bestvideo+bestaudio/best',  # Best quality
-            'outtmpl': video_path,  # Output path
-            'postprocessors': [{
-                'key': 'FFmpegVideoConvertor',
-                'preferedformat': 'mp4'  # Convert to mp4
-            }],
-            'download_ranges': [
-                {'start_time': 0, 'end_time': 15}  # Download only the first 15 seconds
-            ]
-        }
-
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([youtube_url])
+        video_path = f"/app/video_{job_id}.mp4"
+        download_video(youtube_url, video_path)
 
         # Ensure video file exists
         if not os.path.exists(video_path):
@@ -87,39 +124,23 @@ async def collect_and_upload_video(job_id: str):
 
         logging.info("Video download complete.")
 
-        # Upload video to GCS
         upload_to_gcs(video_path)
 
         # Clean up
         os.remove(video_path)
 
+        active_jobs[job_id]["status"] = "completed"
         await manager.send_message(job_id, f"Job {job_id} completed successfully.")
-        active_jobs[job_id] = "completed"
         logging.info(f"Job {job_id} completed successfully.")
     except Exception as e:
         error_message = str(e)
+        active_jobs[job_id]["status"] = "error"
         await manager.send_message(job_id, f"Error in Job {job_id}: {error_message}")
-        active_jobs[job_id] = "error"
         logging.error(f"Error in Job {job_id}: {error_message}")
     finally:
         # Cleanup active job
-        if job_id in active_jobs:
+        if job_id in active_jobs and active_jobs[job_id]["status"] == "completed":
             del active_jobs[job_id]
-
-
-def upload_to_gcs(video_path: str):
-    """
-    Uploads a video to Google Cloud Storage.
-    """
-    bucket = storage_client.bucket(bucket_name)
-    timestamp_path = datetime.now().strftime("%Y/%m")
-    video_name = os.path.basename(video_path)
-    blob_name = f"{timestamp_path}/{video_name}"
-    blob = bucket.blob(blob_name)
-
-    logging.info(f"Uploading {video_path} to {blob_name} in bucket {bucket_name}...")
-    blob.upload_from_filename(video_path)
-    logging.info(f"File uploaded to GCS successfully at {blob_name}.")
 
 
 @app.get("/")
@@ -129,35 +150,48 @@ async def root():
 
 
 @app.post("/collection/start")
-async def start_collection():
+async def start_collection(youtube_url: str = DEFAULT_YOUTUBE_URL):
+    """
+    Starts a new collection job using the given YouTube URL or the default URL.
+    """
     job_id = str(uuid.uuid4())
-    asyncio.create_task(collect_and_upload_video(job_id))
+    asyncio.create_task(collect_and_upload_video(job_id, youtube_url))
     logging.info(f"Collection started with Job ID: {job_id}")
     return JSONResponse({"job_id": job_id, "message": f"Collection started with Job ID {job_id}"})
 
 
 @app.get("/collection/status/{job_id}")
 async def collection_status(job_id: str):
-    if job_id in active_jobs:
-        status = active_jobs[job_id]
-        logging.info(f"Status for Job ID {job_id}: {status}")
-        return JSONResponse({"job_id": job_id, "status": status})
-    else:
+    """
+    Retrieve the status of a specific job ID.
+    """
+    job_info = format_job_info(job_id)
+    if not job_info:
         logging.warning(f"Job ID {job_id} not found.")
         raise HTTPException(status_code=404, detail="Job ID not found.")
+    logging.info(f"Status for Job ID {job_id}: {job_info}")
+    return JSONResponse(job_info)
 
 
 @app.get("/active-collections")
 async def get_active_collections():
+    """
+    Retrieve the list of currently active collection job IDs.
+    """
     logging.info("Fetching active collections.")
-    return JSONResponse({"active_jobs": active_jobs})
+    active_job_info = {job_id: format_job_info(job_id) for job_id in active_jobs}
+    return JSONResponse({"active_jobs": active_job_info})
 
 
 @app.websocket("/ws/{job_id}")
 async def websocket_endpoint(websocket: WebSocket, job_id: str):
+    """
+    WebSocket connection for real-time notifications for a specific job.
+    """
     await manager.connect(websocket, job_id)
     try:
         while True:
+            # Keep the connection alive
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(job_id)
