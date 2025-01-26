@@ -221,21 +221,18 @@ async def collect_and_upload_video(job_id: str, youtube_url: str):
 
         # Use yt-dlp to fetch the live stream and pipe its output to ffmpeg
         ydl = yt_dlp.YoutubeDL(ydl_opts)
-        yt_dlp_process = await asyncio.create_subprocess_exec(
-            "yt-dlp", "--no-warnings", "-f", "best", "-o", "-", youtube_url,
+        yt_dlp_process = subprocess.Popen(
+            ["yt-dlp", "-f", "best", "-o", "-", youtube_url],
             stdout=ffmpeg_process.stdin,
-            stderr=asyncio.subprocess.PIPE
+            stderr=subprocess.PIPE
         )
 
-        # Wait for yt-dlp to finish
-        await yt_dlp_process.wait()
-
-        # Close FFmpeg's stdin to signal completion
-        if ffmpeg_process.stdin:
-            ffmpeg_process.stdin.close()
-
-        # Wait for FFmpeg to finish processing
+        # Wait for ffmpeg to finish processing
         await ffmpeg_process.wait()
+
+        # Terminate yt-dlp after ffmpeg finishes its duration
+        yt_dlp_process.terminate()
+        yt_dlp_process.wait()
 
         # Check for errors
         stderr = await ffmpeg_process.stderr.read()
