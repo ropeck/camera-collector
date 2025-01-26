@@ -1,15 +1,18 @@
-import asyncio
-import os
-import logging
+
+from concurrent.futures import ThreadPoolExecutor
+from collections import UserDict
+from datetime import datetime
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.responses import JSONResponse
-import uuid
-from datetime import datetime
 from google.cloud import storage
-import yt_dlp
+from typing import Optional
+import asyncio
+import logging
+import os
 import subprocess
 import traceback
-from typing import Optional
+import uuid
+import yt_dlp
 
 app = FastAPI()
 
@@ -22,6 +25,7 @@ SERVER_START_TIME = datetime.now().isoformat()
 BUCKET_NAME = os.getenv("BUCKET_NAME", "fogcat-webcam")
 SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE", "/app/service-account-key.json")
 DEFAULT_YOUTUBE_URL = os.getenv("DEFAULT_YOUTUBE_URL", "https://www.youtube.com/watch?v=hXtYKDio1rQ")
+
 
 # WebSocket connection manager
 class ConnectionManager:
@@ -48,7 +52,7 @@ class ConnectionManager:
 
 
 manager = ConnectionManager()
-from collections import UserDict
+
 
 class ThreadSafeJobs(UserDict):
     def __init__(self):
@@ -90,96 +94,14 @@ def download_video(youtube_url: str, output_path: str):
     """
     logging.info(f"Starting video download from {youtube_url}...")
 
-    # yt-dlp options for live streaming
-    ydl_opts = {
-        "format": "best",  # Choose the best available format
-        "outtmpl": "-",  # Output to stdout for piping
-        "quiet": True  # Suppress yt-dlp logs
-    }
+executor = ThreadPoolExecutor()
 
-    # Start ffmpeg process
-    ffmpeg_process = subprocess.Popen(
-        [
-            "ffmpeg",
-            "-i", "pipe:0",  # Input from stdin
-            "-t", "15",  # Limit duration to 15 seconds
-            "-c:v", "libx264",
-            "-c:a", "aac",
-            "-movflags", "+faststart",
-            output_path
-        ],
-        stdin=subprocess.PIPE,  # ffmpeg reads from stdin
-        stdout=subprocess.PIPE,  # Optional: capture ffmpeg's output
-        stderr=subprocess.PIPE  # Capture ffmpeg's errors
-    )
-
-    # Use yt-dlp to fetch the live stream and pipe its output to ffmpeg
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        def download_and_pipe():
-            ydl.download([youtube_url])
-
-        # Redirect yt-dlp's output to ffmpeg's stdin
-        download_process = subprocess.Popen(
-            ["yt-dlp", "--no-warnings", "-f", "best", "-o", "-", youtube_url],
-            stdout=ffmpeg_process.stdin,
-            stderr=subprocess.PIPE
-        )
-
-        download_process.wait()
-
-    # Close ffmpeg's input and wait for it to finish
-    ffmpeg_process.stdin.close()
-    ffmpeg_process.wait()
-
-    # Check for errors
-    if ffmpeg_process.returncode != 0:
-        raise RuntimeError(f"FFmpeg error: {ffmpeg_process.stderr.read().decode()}")
-
-
-def process_video_with_ffmpeg(input_path: str, output_path: str):
+def run_subprocess_blocking(youtube_url, output_path):
     """
-    Processes the video using FFmpeg to ensure compatibility with Safari.
+    Runs the blocking subprocess operations for yt-dlp and FFmpeg.
     """
-    if not os.path.exists(input_path):
-        raise FileNotFoundError(f"Input file {input_path} does not exist.")
-
-    logging.info(f"Processing video {input_path} with FFmpeg...")
-    command = [
-        "ffmpeg",
-        "-i", input_path,  # Input file
-        "-c:v", "libx264",  # Use H.264 video codec
-        "-c:a", "aac",  # Use AAC audio codec
-        "-movflags", "+faststart",  # Enable progressive streaming
-        "-y",  # Overwrite output file if it exists
-        output_path  # Output file
-    ]
-
-    process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    if process.returncode != 0:
-        logging.error(f"FFmpeg processing failed: {process.stderr.decode()}")
-        raise RuntimeError(f"FFmpeg processing failed: {process.stderr.decode()}")
-
-    logging.info(f"Video processed successfully: {output_path}")
-
-
-def upload_to_gcs(video_path: str):
-    """
-    Uploads a video to Google Cloud Storage.
-    """
-    bucket = storage_client.bucket(BUCKET_NAME)
-    timestamp_path = datetime.now().strftime("%Y/%m")
-    video_name = os.path.basename(video_path)
-    blob_name = f"{timestamp_path}/{video_name}"
-    blob = bucket.blob(blob_name)
-
-    logging.info(f"Uploading {video_path} to {blob_name} in bucket {BUCKET_NAME}...")
-    blob.upload_from_filename(video_path)
-    logging.info(f"File uploaded to GCS successfully at {blob_name}.")
-
-
-async def collect_and_upload_video(job_id: str, youtube_url: str):
     ffmpeg_process = None
-    output_path = "output_live.mp4"
+    yt_dlp_process = None
 
     # FFmpeg command to capture 15 seconds
     ffmpeg_cmd = [
@@ -191,7 +113,6 @@ async def collect_and_upload_video(job_id: str, youtube_url: str):
         "-movflags", "+faststart",
         output_path
     ]
-
     try:
         # Start FFmpeg in a subprocess
         ffmpeg_process = subprocess.Popen(
@@ -219,19 +140,49 @@ async def collect_and_upload_video(job_id: str, youtube_url: str):
         if ffmpeg_process.returncode != 0:
             stderr = ffmpeg_process.stderr.read().decode()
             raise RuntimeError(f"FFmpeg error: {stderr}")
+    finally:
+        # Ensure FFmpeg and yt-dlp are terminated
+        if ffmpeg_process and ffmpeg_process.poll() is None:
+            ffmpeg_process.terminate()
+        if yt_dlp_process and yt_dlp_process.poll() is None:
+            yt_dlp_process.terminate()
 
-        await upload_to_gcs(output_path)
+def upload_to_gcs(video_path: str):
+    """
+    Uploads a video to Google Cloud Storage.
+    """
+    bucket = storage_client.bucket(BUCKET_NAME)
+    timestamp_path = datetime.now().strftime("%Y/%m")
+    video_name = os.path.basename(video_path)
+    blob_name = f"{timestamp_path}/{video_name}"
+    blob = bucket.blob(blob_name)
+
+    logging.info(f"Uploading {video_path} to {blob_name} in bucket {BUCKET_NAME}...")
+    blob.upload_from_filename(video_path)
+    logging.info(f"File uploaded to GCS successfully at {blob_name}.")
+
+async def collect_and_upload_video(job_id: str, youtube_url: str):
+    """
+    Asynchronously collect and upload video by offloading blocking tasks.
+    """
+    video_path = f"/app/video_{job_id}.mp4
+    try:
+        # Offload the blocking subprocess call to a separate thread
+        await asyncio.to_thread(run_subprocess_blocking, youtube_url, output_path)
+
+        # Upload the video to GCS
+        await asyncio.to_thread(upload_to_gcs, output_path)
 
     except Exception as e:
         tb = traceback.format_exc()
-        error_message = f"{str(e)}\n{tb}"
+        error_message = f"{str(e)}{tb}"
+        logging.error(f"Error during video collection: {error_message}")
+        await active_jobs.set_status(job_id, "error")
         raise RuntimeError(f"Error during video collection: {error_message}")
 
     finally:
-        # Ensure FFmpeg is terminated
-        if ffmpeg_process:
-            ffmpeg_process.terminate()
-        if os.exists(output_path):
+        # Clean up the local output file
+        if os.path.exists(output_path):
             os.remove(output_path)
 @app.get("/")
 async def root():
