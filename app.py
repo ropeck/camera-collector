@@ -93,37 +93,21 @@ def download_video(youtube_url: str, output_path: str):
     # yt-dlp options for live streaming
     ydl_opts = {
         "format": "best",  # Choose the best available format
-        "outtmpl": "-",  # Output to stdout for piping
+        "external_downloader": "ffmpeg",  # Use ffmpeg as the downloader
+        "external_downloader_args": [
+            "-i", "pipe:0",  # Input pipe
+            "-t", "15",  # Limit duration to 15 seconds
+            "-c:v", "libx264",
+            "-c:a", "aac",
+            "-movflags", "+faststart",
+            output_path
+        ],
         "quiet": True  # Suppress yt-dlp logs
     }
-    # Use yt-dlp to fetch the live stream and pipe to ffmpeg
+
+    # Use yt-dlp to fetch the live stream
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        process = subprocess.Popen(
-            [
-                "ffmpeg",
-                "-i", "pipe:0",  # Input from stdin
-                "-t", "15",      # Limit duration to 15 seconds
-                "-c:v", "libx264",
-                "-c:a", "aac",
-                "-movflags", "+faststart",
-                output_path
-            ],
-            stdin=subprocess.PIPE,  # ffmpeg reads from stdin
-            stdout=subprocess.PIPE,  # Capture ffmpeg output if needed
-            stderr=subprocess.PIPE   # Capture ffmpeg errors
-        )
-
-        # Pipe the yt-dlp output into ffmpeg's stdin
-        ydl.download([youtube_url], process.stdin)
-        process.stdin.close()
-
-        # Wait for ffmpeg to complete
-        process.wait()
-
-        # Check for errors
-        if process.returncode != 0:
-            raise RuntimeError(f"FFmpeg error: {process.stderr.read().decode()}")
-
+        ydl.download([youtube_url])
 
 
 def process_video_with_ffmpeg(input_path: str, output_path: str):
