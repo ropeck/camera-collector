@@ -191,40 +191,59 @@ async def collect_and_upload_video(job_id: str, youtube_url: str):
         processed_video_path = f"/app/video_{job_id}.mp4"
 
         # Download video
-        download_video(youtube_url, raw_video_path)
+    ydl_opts = {
+        "format": "best",  # Choose the best available format
+        "outtmpl": "-",    # Output to stdout for piping
+        "quiet": True      # Suppress yt-dlp logs
+    }
 
-        # Ensure video file exists
-        if not os.path.exists(raw_video_path):
-            raise FileNotFoundError("Video file was not created.")
+    # Start the FFmpeg process
+    ffmpeg_cmd = [
+        "ffmpeg",
+        "-i", "pipe:0",  # Input from stdin
+        "-t", "15",      # Limit duration to 15 seconds
+        "-c:v", "libx264",
+        "-c:a", "aac",
+        "-movflags", "+faststart",
+        output_path
+    ]
 
-        logging.info("Video download complete.")
+    # Run FFmpeg in an asynchronous subprocess
+    ffmpeg_process = await asyncio.create_subprocess_exec(
+        *ffmpeg_cmd,
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE
+    )
 
-        # Process video with FFmpeg
-        process_video_with_ffmpeg(raw_video_path, processed_video_path)
+    try:
+        # Use yt-dlp to fetch the live stream and pipe its output to ffmpeg
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            async with asyncio.subprocess.create_subprocess_exec(
+                "yt-dlp", "--no-warnings", "-f", "best", "-o", "-", youtube_url,
+                stdout=ffmpeg_process.stdin,
+                stderr=asyncio.subprocess.PIPE
+            ) as yt_dlp_process:
+                await yt_dlp_process.wait()
 
-        # Upload processed video
-        upload_to_gcs(processed_video_path)
+        # Close FFmpeg's stdin to signal completion
+        if ffmpeg_process.stdin:
+            ffmpeg_process.stdin.close()
 
-        # Clean up
-        os.remove(raw_video_path)
-        os.remove(processed_video_path)
+        # Wait for FFmpeg to finish processing
+        await ffmpeg_process.wait()
 
-        await active_jobs.set_status(job_id, "completed")
-        await manager.send_message(job_id, f"Job {job_id} completed successfully.")
-        logging.info(f"Job {job_id} completed successfully.")
+        # Check for errors
+        stderr = await ffmpeg_process.stderr.read()
+        if ffmpeg_process.returncode != 0:
+            raise RuntimeError(f"FFmpeg error: {stderr.decode()}")
+
     except Exception as e:
-        # Get the traceback information
-        tb = traceback.format_exc()
-        error_message = f"{str(e)}\n{tb}"
-        await active_jobs.set_status(job_id, "error")
-        await manager.send_message(job_id, f"Error in Job {job_id}: {error_message}")
-        logging.error(f"Error in Job {job_id}: {error_message}")
-    finally:
-        # Cleanup active job
-        if job_info := await active_jobs.get_job(job_id):
-            if job_info["status"] == "completed":
-                await active_jobs.delete_job(job_id)
+        raise RuntimeError(f"Error during video collection: {e}")
 
+    finally:
+        # Ensure FFmpeg is terminated
+        ffmpeg_process.terminate()
 
 @app.get("/")
 async def root():
