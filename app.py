@@ -243,7 +243,9 @@ async def collect_and_upload_video(job_id: str, youtube_url: str):
             raise RuntimeError(f"FFmpeg error: {stderr.decode()}")
 
     except Exception as e:
-        raise RuntimeError(f"Error during video collection: {e}")
+        tb = traceback.format_exc()
+        error_message = f"{str(e)}\n{tb}"
+        raise RuntimeError(f"Error during video collection: {error_message}")
 
     finally:
         # Ensure FFmpeg is terminated
