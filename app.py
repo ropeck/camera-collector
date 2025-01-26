@@ -184,7 +184,8 @@ async def collect_and_upload_video(job_id: str, youtube_url: str):
     except Exception as e:
         # Get the traceback information
         tb = traceback.format_exc()
-        error_message = f"{str(e)}\n{tb}"        await active_jobs.set_status(job_id, "error")
+        error_message = f"{str(e)}\n{tb}"
+        await active_jobs.set_status(job_id, "error")
         await manager.send_message(job_id, f"Error in Job {job_id}: {error_message}")
         logging.error(f"Error in Job {job_id}: {error_message}")
     finally:
