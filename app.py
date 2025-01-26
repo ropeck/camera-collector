@@ -191,32 +191,31 @@ async def collect_and_upload_video(job_id: str, youtube_url: str):
         processed_video_path = f"/app/video_{job_id}.mp4"
 
         # Download video
-    ydl_opts = {
-        "format": "best",  # Choose the best available format
-        "outtmpl": "-",    # Output to stdout for piping
-        "quiet": True      # Suppress yt-dlp logs
-    }
+        ydl_opts = {
+            "format": "best",  # Choose the best available format
+            "outtmpl": "-",    # Output to stdout for piping
+            "quiet": True      # Suppress yt-dlp logs
+        }
 
-    # Start the FFmpeg process
-    ffmpeg_cmd = [
-        "ffmpeg",
-        "-i", "pipe:0",  # Input from stdin
-        "-t", "15",      # Limit duration to 15 seconds
-        "-c:v", "libx264",
-        "-c:a", "aac",
-        "-movflags", "+faststart",
-        output_path
-    ]
+        # Start the FFmpeg process
+        ffmpeg_cmd = [
+            "ffmpeg",
+            "-i", "pipe:0",  # Input from stdin
+            "-t", "15",      # Limit duration to 15 seconds
+            "-c:v", "libx264",
+            "-c:a", "aac",
+            "-movflags", "+faststart",
+            output_path
+        ]
 
-    # Run FFmpeg in an asynchronous subprocess
-    ffmpeg_process = await asyncio.create_subprocess_exec(
-        *ffmpeg_cmd,
-        stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
-    )
+        # Run FFmpeg in an asynchronous subprocess
+        ffmpeg_process = await asyncio.create_subprocess_exec(
+            *ffmpeg_cmd,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
 
-    try:
         # Use yt-dlp to fetch the live stream and pipe its output to ffmpeg
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             async with asyncio.subprocess.create_subprocess_exec(
