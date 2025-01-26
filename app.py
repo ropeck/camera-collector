@@ -166,7 +166,9 @@ async def collect_and_upload_video(job_id: str, youtube_url: str):
     Asynchronously collect and upload video by offloading blocking tasks.
     """
     await active_jobs.set_status(job_id, "in progress")
-    output_path = f"/app/video_{job_id}.mp4"
+    local_time = datetime.now().astimezone()
+    timestamp = local_time.strftime('%Y-%m-%dT%H:%M-%S%z')
+    output_path = f"/app/fogcat-webcam/{local_time.strftime('%Y')}/{local_time.strftime('%m')}/seacliff-{timestamp}.mp4"
     try:
         # Offload the blocking subprocess call to a separate thread
         await asyncio.to_thread(run_subprocess_blocking, youtube_url, output_path)
