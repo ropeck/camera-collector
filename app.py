@@ -147,7 +147,7 @@ async def root():
     return JSONResponse({"message": "Camera Collector API is running!", "version": version_info})
 
 
-@app.post("/collection/start")
+@app.post("/collection/start/{youtube_url:path}")
 async def start_collection(youtube_url: str = DEFAULT_YOUTUBE_URL):
     """
     Starts a new collection job using the given YouTube URL or the default URL.
