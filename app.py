@@ -1,7 +1,7 @@
 import asyncio
 import os
 import logging
-from fastapi import FastAPI, Request, WebSocket, Disconnect, HTTPException
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.responses import JSONResponse
 import uuid
 from datetime import datetime
