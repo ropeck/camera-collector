@@ -197,11 +197,12 @@ async def root():
     return JSONResponse({"message": "Camera Collector API is running!", "version": version_info})
 
 
-@app.post("/collection/start/{youtube_url:path}")
-async def start_collection(youtube_url: str = DEFAULT_YOUTUBE_URL):
+async def start_collection(youtube_url: Optional[str] = None):
     """
     Starts a new collection job using the given YouTube URL or the default URL.
     """
+    youtube_url = youtube_url or DEFAULT_YOUTUBE_URL
+
     job_id = str(uuid.uuid4())
     asyncio.create_task(collect_and_upload_video(job_id, youtube_url))
     logging.info(f"Collection started with Job ID: {job_id}")
