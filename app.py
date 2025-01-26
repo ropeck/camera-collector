@@ -196,7 +196,7 @@ async def root():
     version_info = ("BUILD_TIME: " + BUILD_TIME) if BUILD_TIME else ("SERVER_START_TIME: " + SERVER_START_TIME)
     return JSONResponse({"message": "Camera Collector API is running!", "version": version_info})
 
-
+@app.post("/collection/start/{youtube_url:path}")
 async def start_collection(youtube_url: Optional[str] = None):
     """
     Starts a new collection job using the given YouTube URL or the default URL.
