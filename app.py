@@ -182,63 +182,32 @@ async def collect_and_upload_video(job_id: str, youtube_url: str):
     output_path = "output_live.mp4"
 
     try:
-        await active_jobs.set_job(job_id, {
-            "url": youtube_url,
-            "time_started": datetime.now().isoformat(),
-            "status": "running",
-        })
-        logging.info(f"Job {job_id} started.")
-        await manager.send_message(job_id, f"Job {job_id} started.")
-
-        raw_video_path = f"/app/raw_video_{job_id}.mp4"
-        processed_video_path = f"/app/video_{job_id}.mp4"
-
-        # Download video
-        ydl_opts = {
-            "format": "best",  # Choose the best available format
-            "outtmpl": "-",    # Output to stdout for piping
-            "quiet": True      # Suppress yt-dlp logs
-        }
-
-        # Start the FFmpeg process
-        ffmpeg_cmd = [
-            "ffmpeg",
-            "-i", "pipe:0",  # Input from stdin
-            "-t", "15",      # Limit duration to 15 seconds
-            "-c:v", "libx264",
-            "-c:a", "aac",
-            "-movflags", "+faststart",
-            output_path
-        ]
-
-        # Run FFmpeg in an asynchronous subprocess
-        ffmpeg_process = await asyncio.create_subprocess_exec(
-            *ffmpeg_cmd,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
+        # Start FFmpeg in a subprocess
+        ffmpeg_process = subprocess.Popen(
+            ffmpeg_cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
         )
 
-        # Use yt-dlp to fetch the live stream and pipe its output to ffmpeg
-        ydl = yt_dlp.YoutubeDL(ydl_opts)
+        # Start yt-dlp and pipe its output to FFmpeg
         yt_dlp_process = subprocess.Popen(
             ["yt-dlp", "-f", "best", "-o", "-", youtube_url],
             stdout=ffmpeg_process.stdin,
             stderr=subprocess.PIPE
         )
 
-        # Wait for ffmpeg to finish processing
-        await ffmpeg_process.wait()
+        # Wait for FFmpeg to finish processing
+        ffmpeg_process.communicate()  # Block until FFmpeg is done
 
-        # Terminate yt-dlp after ffmpeg finishes its duration
+        # Terminate yt-dlp after FFmpeg finishes its duration
         yt_dlp_process.terminate()
         yt_dlp_process.wait()
 
-        # Check for errors
-        stderr = await ffmpeg_process.stderr.read()
+        # Check FFmpeg's return code
         if ffmpeg_process.returncode != 0:
-            raise RuntimeError(f"FFmpeg error: {stderr.decode()}")
-
+            stderr = ffmpeg_process.stderr.read().decode()
+            raise RuntimeError(f"FFmpeg error: {stderr}")
     except Exception as e:
         tb = traceback.format_exc()
         error_message = f"{str(e)}\n{tb}"
