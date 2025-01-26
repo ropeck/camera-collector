@@ -108,9 +108,22 @@ def download_video(youtube_url: str, output_path: str):
                 "-movflags", "+faststart",
                 output_path
             ],
-            stdin=subprocess.PIPE
+            stdin=subprocess.PIPE,  # ffmpeg reads from stdin
+            stdout=subprocess.PIPE,  # Capture ffmpeg output if needed
+            stderr=subprocess.PIPE   # Capture ffmpeg errors
         )
-        ydl.download([youtube_url])
+
+        # Pipe the yt-dlp output into ffmpeg's stdin
+        ydl.download([youtube_url], process.stdin)
+        process.stdin.close()
+
+        # Wait for ffmpeg to complete
+        process.wait()
+
+        # Check for errors
+        if process.returncode != 0:
+            raise RuntimeError(f"FFmpeg error: {process.stderr.read().decode()}")
+
 
 
 def process_video_with_ffmpeg(input_path: str, output_path: str):
