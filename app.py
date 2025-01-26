@@ -188,7 +188,7 @@ async def collect_and_upload_video(job_id: str, youtube_url: str):
         # Cleanup active job
         if job_info := await active_jobs.get_job(job_id):
             if job_info["status"] == "completed":
-            await active_jobs.delete_job(job_id)
+                await active_jobs.delete_job(job_id)
 
 
 @app.get("/")
