@@ -165,7 +165,7 @@ async def collect_and_upload_video(job_id: str, youtube_url: str):
     """
     Asynchronously collect and upload video by offloading blocking tasks.
     """
-    video_path = f"/app/video_{job_id}.mp4
+    video_path = f"/app/video_{job_id}.mp4"
     try:
         # Offload the blocking subprocess call to a separate thread
         await asyncio.to_thread(run_subprocess_blocking, youtube_url, output_path)
