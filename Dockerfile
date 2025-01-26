@@ -33,7 +33,6 @@ RUN ln -sf /usr/share/zoneinfo/America/Los_Angeles /etc/localtime && \
 COPY app.py /app/app.py
 COPY sun.py /app/sun.py
 COPY start_collection.py /app/start_collection.py
-COPY save_video.sh /app/save_video.sh
 COPY endpoint.sh /app/endpoint.sh
 
 # Ensure scripts have executable permissions
