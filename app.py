@@ -178,6 +178,9 @@ def upload_to_gcs(video_path: str):
 
 
 async def collect_and_upload_video(job_id: str, youtube_url: str):
+    ffmpeg_process = None
+    output_path = "output_live.mp4"
+
     try:
         await active_jobs.set_job(job_id, {
             "url": youtube_url,
@@ -242,7 +245,8 @@ async def collect_and_upload_video(job_id: str, youtube_url: str):
 
     finally:
         # Ensure FFmpeg is terminated
-        ffmpeg_process.terminate()
+        if ffmpeg_process:
+            ffmpeg_process.terminate()
 
 @app.get("/")
 async def root():
