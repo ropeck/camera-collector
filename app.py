@@ -219,6 +219,9 @@ async def collect_and_upload_video(job_id: str, youtube_url: str):
         if ffmpeg_process.returncode != 0:
             stderr = ffmpeg_process.stderr.read().decode()
             raise RuntimeError(f"FFmpeg error: {stderr}")
+
+        await upload_to_gcs(output_path)
+
     except Exception as e:
         tb = traceback.format_exc()
         error_message = f"{str(e)}\n{tb}"
@@ -228,7 +231,8 @@ async def collect_and_upload_video(job_id: str, youtube_url: str):
         # Ensure FFmpeg is terminated
         if ffmpeg_process:
             ffmpeg_process.terminate()
-
+        if os.exists(output_path):
+            os.remove(output_path)
 @app.get("/")
 async def root():
     version_info = ("BUILD_TIME: " + BUILD_TIME) if BUILD_TIME else ("SERVER_START_TIME: " + SERVER_START_TIME)
