@@ -186,6 +186,7 @@ async def collect_and_upload_video(job_id: str, youtube_url: str):
         # Clean up the local output file
         if os.path.exists(output_path):
             os.remove(output_path)
+        await active_jobs.delete_job(job_id)
 @app.get("/")
 async def root():
     version_info = ("BUILD_TIME: " + BUILD_TIME) if BUILD_TIME else ("SERVER_START_TIME: " + SERVER_START_TIME)
