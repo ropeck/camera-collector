@@ -212,6 +212,15 @@ async def start_collection(youtube_url: Optional[str] = None):
     return JSONResponse({"job_id": job_id, "message": f"Collection started with Job ID {job_id}"})
 
 
+@app.post("/collection/start")
+async def start_collection_root(request: Request, youtube_url: Optional[str] = None):
+    """
+    Redirects to the /collection/start/{youtube_url:path} with the default YouTube URL if none is provided.
+    """
+    youtube_url = youtube_url or DEFAULT_YOUTUBE_URL
+    return await start_collection(youtube_url)
+
+
 @app.get("/collection/status/{job_id}")
 async def collection_status(job_id: str):
     """
