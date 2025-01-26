@@ -144,19 +144,6 @@ def upload_to_gcs(video_path: str):
     logging.info(f"File uploaded to GCS successfully at {blob_name}.")
 
 
-def format_job_info(job_id: str):
-    """Formats job information for API responses."""
-    job_info = active_jobs.get(job_id, None)
-    if not job_info:
-        return None
-    return {
-        "job_id": job_id,
-        "url": job_info.get("url"),
-        "time_started": job_info.get("time_started"),
-        "status": job_info.get("status"),
-    }
-
-
 async def collect_and_upload_video(job_id: str, youtube_url: str):
     try:
         await active_jobs.set_job(job_id, {
