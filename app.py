@@ -89,20 +89,28 @@ def download_video(youtube_url: str, output_path: str):
     Downloads a video from YouTube using yt-dlp.
     """
     logging.info(f"Starting video download from {youtube_url}...")
-    ydl_opts = {
-        'format': 'bestvideo+bestaudio/best',
-        'outtmpl': output_path,
-        'postprocessors': [{
-            'key': 'FFmpegVideoConvertor',
-            'preferedformat': 'mp4'
-        }],
-        'download_ranges': [
-            {'start_time': 0, 'end_time': 15}
-        ]
-    }
 
+    # yt-dlp options for live streaming
+    ydl_opts = {
+        "format": "best",  # Choose the best available format
+        "outtmpl": "-",  # Output to stdout for piping
+        "quiet": True  # Suppress yt-dlp logs
+    }
+    # Use yt-dlp to fetch the live stream and pipe to ffmpeg
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([youtube_url])
+        process = subprocess.Popen(
+            [
+                "ffmpeg",
+                "-i", "pipe:0",  # Input from stdin
+                "-t", "15",      # Limit duration to 15 seconds
+                "-c:v", "libx264",
+                "-c:a", "aac",
+                "-movflags", "+faststart",
+                output_path
+            ],
+            stdin=subprocess.PIPE
+        )
+        ydl.download([stream_url])
 
 
 def process_video_with_ffmpeg(input_path: str, output_path: str):
