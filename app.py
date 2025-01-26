@@ -5,8 +5,6 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.responses import JSONResponse
 import uuid
 from datetime import datetime
-from collections import defaultdict
-from pathlib import Path
 from google.cloud import storage
 import yt_dlp
 
