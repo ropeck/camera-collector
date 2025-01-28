@@ -12,7 +12,6 @@ import os
 import subprocess
 import traceback
 import uuid
-import yt_dlp
 
 app = FastAPI()
 
@@ -189,6 +188,15 @@ async def collect_and_upload_video(job_id: str, youtube_url: str):
         if os.path.exists(output_path):
             os.remove(output_path)
         await active_jobs.delete_job(job_id)
+
+        @app.get("/health")
+        async def health_check():
+            """
+            Health check endpoint to verify the API is running.
+            """
+            return JSONResponse({"status": "ok", "message": "Service is healthy."})
+
+
 @app.get("/")
 async def root():
     version_info = ("BUILD_TIME: " + BUILD_TIME) if BUILD_TIME else ("SERVER_START_TIME: " + SERVER_START_TIME)
