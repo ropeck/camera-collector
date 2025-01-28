@@ -1,4 +1,4 @@
-
+import json
 from concurrent.futures import ThreadPoolExecutor
 from collections import UserDict
 from datetime import datetime
@@ -63,6 +63,9 @@ class ThreadSafeJobs(UserDict):
         async with self._lock:
             if job_id in self.data:
                 self.data[job_id]["status"] = status
+        await manager.send_message(job_id,
+                                   json.dumps({"job_id": job_id,
+                                               "status": status}))
 
     async def set_job(self, job_id: str, job_info: dict):
         async with self._lock:
@@ -182,11 +185,11 @@ async def collect_and_upload_video(job_id: str, youtube_url: str):
         logging.error(f"Error during video collection: {error_message}")
         await active_jobs.set_status(job_id, "error")
         raise RuntimeError(f"Error during video collection: {error_message}")
-
     finally:
         # Clean up the local output file
         if os.path.exists(output_path):
             os.remove(output_path)
+        await active_jobs.set_status(job_id, "completed")
         await active_jobs.delete_job(job_id)
 
         @app.get("/health")

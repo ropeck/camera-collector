@@ -6,5 +6,6 @@ pytest        # For API testing
 pytz
 requests
 uvicorn
+websocket-client
 websockets    # For WebSocket testing and additional functionality
 yt-dlp
