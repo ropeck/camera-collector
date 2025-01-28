@@ -8,6 +8,7 @@ import time
 START_COLLECTION_API_URL = "https://api.fogcat5.com/collection/start"
 WEBSOCKET_URL = "wss://api.fogcat5.com/ws"
 IMAGE_REQUEST_URL = "https://weather.fogcat5.com/collector/video_latest"
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 
 def start_collection():
     try:
