@@ -70,7 +70,9 @@ class ThreadSafeJobs(UserDict):
     async def set_job(self, job_id: str, job_info: dict):
         async with self._lock:
             self.data[job_id] = job_info
-
+        await manager.send_message(job_id,
+                                   json.dumps({"job_id": job_id,
+                                               "job_info": job_info}))
     async def get_job(self, job_id: str):
         async with self._lock:
             return self.data.get(job_id)

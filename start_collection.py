@@ -30,7 +30,13 @@ def wait_for_image_ready(job_id):
     try:
         def on_message(ws, message):
             data = json.loads(message)
-            if data.get("job_id") == job_id and data.get("status") == "ready":
+            if data.get("job_id") == job_id:
+                status = data.get("status", None)
+                if status:
+                    logging.info(status)
+                else:
+                    logging.warning(f"Received message: {message}")
+            if data.get("job_id") == job_id and data.get("status") == "completed":
                 logging.info(f"Image is ready for Job ID: {job_id}")
                 ws.close()  # Close the connection once the image is ready
 
@@ -61,6 +67,7 @@ def fetch_latest_image():
     try:
         # Request the image with the text overlay
         response = requests.get(IMAGE_REQUEST_URL)
+        logging.info(f"Fetched latest image: {response.headers}")
         if response.status_code == 200:
             logging.info("Successfully fetched the latest image.")
         else:
