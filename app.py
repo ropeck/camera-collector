@@ -251,6 +251,70 @@ async def collect_and_upload_video(job_id: str, youtube_url: str):
         await active_jobs.set_status(job_id, "completed")
         await active_jobs.delete_job(job_id)
 
+        @app.get("/health")
+        async def health_check():
+            """
+            Health check endpoint to verify the API is running.
+            """
+            return JSONResponse({"status": "ok", "message": "Service is healthy."})
+
+
+@app.get("/")
+async def root():
+    version_info = ("BUILD_TIME: " + BUILD_TIME) if BUILD_TIME else ("SERVER_START_TIME: " + SERVER_START_TIME)
+    return JSONResponse({"message": "Camera Collector API is running!", "version": version_info})
+
+@app.post("/collection/start/{youtube_url:path}")
+async def start_collection(youtube_url: Optional[str] = None):
+    """
+    Starts a new collection job using the given YouTube URL or the default URL.
+    """
+    youtube_url = youtube_url or DEFAULT_YOUTUBE_URL
+
+    job_id = str(uuid.uuid4())
+    asyncio.create_task(collect_and_upload_video(job_id, youtube_url))
+    await active_jobs.set_job(job_id, {"status": "started", "youtube_url": youtube_url, "start_time": datetime.now().isoformat()})
+    logging.info(f"Collection started with Job ID: {job_id}")
+    return JSONResponse({"job_id": job_id, "message": f"Collection started with Job ID {job_id}"})
+
+
+@app.post("/collection/start")
+async def start_collection_root(request: Request, youtube_url: Optional[str] = None):
+    """
+    Redirects to the /collection/start/{youtube_url:path} with the default YouTube URL if none is provided.
+    """
+    youtube_url = DEFAULT_YOUTUBE_URL
+
+    job_id = str(uuid.uuid4())
+    asyncio.create_task(collect_and_upload_video(job_id, youtube_url))
+    await active_jobs.set_job(job_id, {"status": "started", "youtube_url": youtube_url, "start_time": datetime.now().isoformat()})
+    logging.info(f"Collection started with Job ID: {job_id}")
+    return JSONResponse({"job_id": job_id, "message": f"Collection started with Job ID {job_id}"})
+
+
+
+@app.get("/collection/status/{job_id}")
+async def collection_status(job_id: str):
+    """
+    Retrieve the status of a specific job ID.
+    """
+    job_info = await active_jobs.get_job(job_id)
+    if not job_info:
+        logging.warning(f"Job ID {job_id} not found.")
+        raise HTTPException(status_code=404, detail="Job ID not found.")
+    logging.info(f"Status for Job ID {job_id}: {job_info}")
+    return JSONResponse(job_info)
+
+
+@app.get("/active-collections")
+async def get_active_collections():
+    """
+    Retrieve the list of currently active collection job IDs.
+    """
+    logging.info("Fetching active collections.")
+    active_job_info = await active_jobs.get_all_jobs()
+    return JSONResponse({"active_jobs": active_job_info})
+
 
 @app.websocket("/ws/{job_id}")
 async def websocket_endpoint(websocket: WebSocket, job_id: str):
