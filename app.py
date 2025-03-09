@@ -3,11 +3,13 @@ from collections import UserDict
 from datetime import datetime
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from google.cloud import storage
+from typing import Optional
 import asyncio
 import logging
 import os
 import subprocess
 import traceback
+import uuid
 
 app = FastAPI()
 
