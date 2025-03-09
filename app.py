@@ -117,6 +117,11 @@ def run_subprocess_blocking(youtube_url, output_path):
         "-movflags", "+faststart",
         output_path
     ]
+    logging.info("command: " + " ".join(ffmpeg_cmd))
+    
+    cmd = ["yt-dlp", "-f", "best", "-o", "-", youtube_url]
+    logging.info("command: " + " ".join(cmd))
+
     try:
         # Start FFmpeg in a subprocess
         ffmpeg_process = subprocess.Popen(
@@ -128,7 +133,7 @@ def run_subprocess_blocking(youtube_url, output_path):
 
         # Start yt-dlp and pipe its output to FFmpeg
         yt_dlp_process = subprocess.Popen(
-            ["yt-dlp", "-f", "best", "-o", "-", youtube_url],
+            cmd,
             stdout=ffmpeg_process.stdin,
             stderr=subprocess.PIPE
         )
