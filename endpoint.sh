@@ -11,6 +11,14 @@ touch /var/log/camera-collector
 /app/sun.py
 /usr/sbin/cron
 
+# pass the service account auth details to upload cached results
+ENV GOOGLE_APPLICATION_CREDENTIALS=/app/service-account-key.json
+
+# Authenticate with Google Cloud using the service account key
+if [ -f "/app/service-account-key.json" ]; then
+  gcloud auth activate-service-account --key-file=/app/service-account-key.json
+fi
+
 # get the cookies so we can download the video
 gsutil cp gs://fogcat-webcam/cookies.txt /app/cookies.txt
 
