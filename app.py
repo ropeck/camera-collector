@@ -118,8 +118,29 @@ def run_subprocess_blocking(youtube_url, output_path):
         output_path
     ]
     logging.info("command: " + " ".join(ffmpeg_cmd))
-    
-    cmd = ["yt-dlp", "-f", "best", "-o", "-", youtube_url]
+
+    # get available formats with --list-formats
+    # $ yt-dlp -f best -o foo 'https://www.youtube.com/watch?v=hXtYKDio1rQ' --list-formats
+    # WARNING: "-f best" selects the best pre-merged format which is often not the best option.
+    #          To let yt-dlp download and merge the best available formats, simply do not pass any format selection.
+    #          If you know what you are doing and want only the best pre-merged format, use "-f b" instead to suppress this warning
+    # [youtube] Extracting URL: https://www.youtube.com/watch?v=hXtYKDio1rQ
+    # [youtube] hXtYKDio1rQ: Downloading webpage
+    # [youtube] hXtYKDio1rQ: Downloading ios player API JSON
+    # [youtube] hXtYKDio1rQ: Downloading web creator player API JSON
+    # [youtube] hXtYKDio1rQ: Downloading m3u8 information
+    # [info] Available formats for hXtYKDio1rQ:
+    # ID  EXT RESOLUTION FPS │   TBR PROTO │ VCODEC        VBR ACODEC     MORE INFO
+    # ─────────────────────────────────────────────────────────────────────────────
+    # 233 mp4 audio only     │       m3u8  │ audio only        unknown    Default
+    # 234 mp4 audio only     │       m3u8  │ audio only        unknown    Default
+    # 269 mp4 256x144     30 │  269k m3u8  │ avc1.4D400C  269k video only
+    # 229 mp4 426x240     30 │  507k m3u8  │ avc1.4D4015  507k video only
+    # 230 mp4 640x360     30 │  962k m3u8  │ avc1.4D401E  962k video only
+    # 231 mp4 854x480     30 │ 1283k m3u8  │ avc1.4D401F 1283k video only
+    # 232 mp4 1280x720    30 │ 2448k m3u8  │ avc1.4D401F 2448k video only
+    # cmd = ["yt-dlp", "-f", "best", "-o", "-", youtube_url]
+    cmd = ["yt-dlp", "-o", "-", youtube_url]
     logging.info("command: " + " ".join(cmd))
 
     try:
