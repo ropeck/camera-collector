@@ -82,4 +82,6 @@ Listed in `requirements.txt`:
 - **Authentication**: Implement OAuth2-based login for secure uploads.
 - **Improved Camera Support**: Integrate with IP cameras and custom RTSP streams.
 - **Live Video Preview**: Provide a live preview of the camera feed on the web app.
+
+- 
 - **Alerts and Notifications**: Notify users of low storage or system errors via email or webhook.
