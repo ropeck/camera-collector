@@ -157,7 +157,7 @@ def run_subprocess_blocking(youtube_url, output_path):
     # 231 mp4 854x480     30 │ 1283k m3u8  │ avc1.4D401F 1283k video only
     # 232 mp4 1280x720    30 │ 2448k m3u8  │ avc1.4D401F 2448k video only
     # cmd = ["yt-dlp", "-f", "best", "-o", "-", youtube_url]
-    cmd = ["yt-dlp", "-o", "-", youtube_url]
+    cmd = ["yt-dlp", "-o", "-", "--cookies", "/app/cookies.txt", youtube_url]
     logging.info("command: " + " ".join(cmd))
 
     try:
