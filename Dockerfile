@@ -12,6 +12,8 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     cron \
     at \
+    iproute2 \
+    iputils-ping \
     tzdata && \
     pip install -r requirements.txt && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
