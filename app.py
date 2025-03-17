@@ -166,6 +166,7 @@ def run_subprocess_blocking(youtube_url, output_path):
     try:
         # Start FFmpeg in a subprocess
         ffmpeg_process = subprocess.Popen(
+            shell=True,
             ffmpeg_cmd,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
