@@ -122,7 +122,7 @@ storage_client = storage.Client.from_service_account_json(SERVICE_ACCOUNT_FILE)
 
 
 def lookup_external_ip():
-    return urllib.request.urlopen('https://ident.me').read().decode('utf8')
+    return urllib.request.urlopen('https://ifconfig.me').read().decode('utf8')
 
 
 def run_subprocess_blocking(youtube_url, output_path):
@@ -168,9 +168,6 @@ def run_subprocess_blocking(youtube_url, output_path):
 
     external_ip = lookup_external_ip()
     logging.info(f'external address: {external_ip}')
-
-    result = subprocess.run(cmd, capture_output=True, encoding='UTF-8')
-    logging.info("> " + result.stdout)
 
     cmd = ["yt-dlp", "-o", "-", youtube_url]
     logging.info("command: " + " ".join(cmd))
