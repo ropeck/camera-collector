@@ -11,6 +11,7 @@ import os
 import subprocess
 import traceback
 import uuid
+import urllib.request
 
 app = FastAPI()
 
@@ -120,6 +121,10 @@ active_jobs = ThreadSafeJobs()
 storage_client = storage.Client.from_service_account_json(SERVICE_ACCOUNT_FILE)
 
 
+def lookup_external_ip():
+    return urllib.request.urlopen('https://ident.me').read().decode('utf8')
+
+
 def run_subprocess_blocking(youtube_url, output_path):
     """
     Runs the blocking subprocess operations for yt-dlp and FFmpeg.
@@ -160,8 +165,10 @@ def run_subprocess_blocking(youtube_url, output_path):
     # 231 mp4 854x480     30 │ 1283k m3u8  │ avc1.4D401F 1283k video only
     # 232 mp4 1280x720    30 │ 2448k m3u8  │ avc1.4D401F 2448k video only
     # cmd = ["yt-dlp", "-f", "best", "-o", "-", youtube_url]
-    cmd = ["curl", "ifconfig.me"]
-    logging.info("# " + " ".join(cmd))
+
+    external_ip = lookup_external_ip()
+    logging.info(f'external address: {external_ip}')
+
     result = subprocess.run(cmd, capture_output=True, encoding='UTF-8')
     logging.info("> " + result.stdout)
 
