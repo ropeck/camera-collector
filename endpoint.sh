@@ -20,7 +20,8 @@ if [ -f "/app/service-account-key.json" ]; then
 fi
 
 # get the cookies so we can download the video
-gsutil cp gs://fogcat-webcam/cookies.txt /app/cookies.txt
+# March 16, 2025 - don't need the cookies because we have vpn
+#gsutil cp gs://fogcat-webcam/cookies.txt /app/cookies.txt
 
 echo "starting API service"
 /usr/local/bin/python3 app.py &
