@@ -162,7 +162,7 @@ def run_subprocess_blocking(youtube_url, output_path):
     # cmd = ["yt-dlp", "-f", "best", "-o", "-", youtube_url]
     cmd = ["curl", "ifconfig.me"]
     logging.info("# " + " ".join(cmd))
-    result = subprocess.run(cmd)
+    result = subprocess.run(cmd, capture_output=True, encoding='UTF-8')
     logging.info("> " + result.stdout)
 
     cmd = ["yt-dlp", "-o", "-", youtube_url]
