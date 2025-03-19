@@ -12,8 +12,11 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     cron \
     at \
+    iptables \
     iproute2 \
     iputils-ping \
+    dnsutils \
+    vim \
     tzdata && \
     pip install -r requirements.txt && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
