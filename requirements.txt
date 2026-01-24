@@ -10,3 +10,4 @@ uvicorn
 websocket-client
 websockets    # For WebSocket testing and additional functionality
 yt-dlp
+Pillow            # Image manipulation for collage generation

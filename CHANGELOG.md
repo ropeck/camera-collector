@@ -7,9 +7,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Planned
-- Sunset/sunrise collage image generation
 - Video compositing features
 - Concatenate videos into longer compilations
+
+## [0.6.0] - 2026-01-24
+
+### Added
+- Grid collage generation from multiple sunrise/sunset videos
+- New `POST /collage/generate` API endpoint with parameters:
+  - `year`, `month` for date filtering
+  - `time_filter` for sunrise/sunset filtering
+  - `grid_cols`, `grid_rows` for layout configuration
+  - `frame_time` for frame extraction timing
+- New `collage.py` module with functions for:
+  - Listing videos from GCS with time-of-day filtering
+  - Extracting frames from videos using ffmpeg
+  - Creating grid collages using Pillow
+  - Uploading collages to GCS
+- 25 new tests for collage functionality
+- Pillow dependency for image manipulation
 
 ## [0.5.0] - 2026-01-24
 
@@ -93,7 +109,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - FastAPI web service
 - Pacific timezone support
 
-[Unreleased]: https://github.com/ropeck/camera-collector/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/ropeck/camera-collector/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/ropeck/camera-collector/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/ropeck/camera-collector/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/ropeck/camera-collector/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/ropeck/camera-collector/compare/v0.2.0...v0.3.0

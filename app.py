@@ -1,7 +1,7 @@
 import json
 from collections import UserDict
 from datetime import datetime
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, Query, Request, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.responses import JSONResponse
 from google.cloud import storage
 from typing import Optional
@@ -12,6 +12,8 @@ import subprocess
 import traceback
 import uuid
 import urllib.request
+
+import collage
 
 app = FastAPI()
 
@@ -326,6 +328,54 @@ async def get_active_collections():
     logging.info("Fetching active collections.")
     active_job_info = await active_jobs.get_all_jobs()
     return JSONResponse({"active_jobs": active_job_info})
+
+
+@app.post("/collage/generate")
+async def generate_collage(
+    year: Optional[int] = Query(None, description="Filter videos by year (default: current year)"),
+    month: Optional[int] = Query(None, description="Filter videos by month (default: current month)"),
+    time_filter: Optional[str] = Query(None, description="Filter by 'sunrise' or 'sunset'"),
+    grid_cols: int = Query(5, description="Number of columns in the grid"),
+    grid_rows: int = Query(6, description="Number of rows in the grid"),
+    frame_time: float = Query(7.0, description="Seconds into video to extract frame"),
+):
+    """
+    Generate a grid collage from videos in GCS.
+
+    Creates a collage image by extracting one frame from each video
+    and arranging them in a grid layout.
+    """
+    logging.info(f"Generating collage: year={year}, month={month}, time_filter={time_filter}, grid={grid_cols}x{grid_rows}")
+
+    # Validate time_filter
+    if time_filter and time_filter not in ("sunrise", "sunset"):
+        raise HTTPException(status_code=400, detail="time_filter must be 'sunrise' or 'sunset'")
+
+    # Validate grid dimensions
+    if grid_cols < 1 or grid_cols > 10:
+        raise HTTPException(status_code=400, detail="grid_cols must be between 1 and 10")
+    if grid_rows < 1 or grid_rows > 10:
+        raise HTTPException(status_code=400, detail="grid_rows must be between 1 and 10")
+
+    try:
+        result = await asyncio.to_thread(
+            collage.generate_collage,
+            storage_client,
+            BUCKET_NAME,
+            year=year,
+            month=month,
+            time_filter=time_filter,
+            grid_cols=grid_cols,
+            grid_rows=grid_rows,
+            frame_time=frame_time,
+        )
+        logging.info(f"Collage generated: {result}")
+        return JSONResponse(result)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logging.error(f"Error generating collage: {e}")
+        raise HTTPException(status_code=500, detail=f"Error generating collage: {str(e)}")
 
 
 @app.websocket("/ws/{job_id}")
