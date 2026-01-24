@@ -11,3 +11,5 @@ websocket-client
 websockets    # For WebSocket testing and additional functionality
 yt-dlp
 Pillow            # Image manipulation for collage generation
+jinja2            # HTML template rendering
+aiofiles          # Async static file serving

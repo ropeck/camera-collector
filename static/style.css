@@ -1,0 +1,402 @@
+/* Reset and base styles */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    color: #e8e8e8;
+    min-height: 100vh;
+    line-height: 1.6;
+}
+
+.container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* Header */
+header {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 30px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+h1 {
+    font-size: 1.8rem;
+    background: linear-gradient(90deg, #ff9966, #ff5e62);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.filters {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.filters label {
+    font-size: 0.9rem;
+    color: #aaa;
+}
+
+.filters select {
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.1);
+    color: #e8e8e8;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: border-color 0.3s, background 0.3s;
+}
+
+.filters select:hover {
+    border-color: rgba(255, 255, 255, 0.4);
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.filters select:focus {
+    outline: none;
+    border-color: #ff9966;
+}
+
+/* Loading state */
+.loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px;
+}
+
+.spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid rgba(255, 255, 255, 0.1);
+    border-top-color: #ff9966;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.loading p {
+    margin-top: 15px;
+    color: #aaa;
+}
+
+/* Months grid */
+.months-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 20px;
+}
+
+.month-card {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.3s, box-shadow 0.3s;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.month-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    border-color: rgba(255, 153, 102, 0.5);
+}
+
+.month-card .thumbnail {
+    width: 100%;
+    height: 150px;
+    object-fit: cover;
+    background: rgba(0, 0, 0, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.month-card .thumbnail img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.month-card .thumbnail .placeholder {
+    font-size: 3rem;
+    opacity: 0.3;
+}
+
+.month-card .info {
+    padding: 15px;
+}
+
+.month-card .month-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+
+.month-card .counts {
+    display: flex;
+    gap: 15px;
+    font-size: 0.9rem;
+    color: #aaa;
+}
+
+.month-card .count-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.month-card .count-item.sunrise {
+    color: #ffcc80;
+}
+
+.month-card .count-item.sunset {
+    color: #ff8a65;
+}
+
+.month-card .compilation-status {
+    margin-top: 10px;
+    font-size: 0.8rem;
+}
+
+.month-card .compilation-status .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-right: 5px;
+    font-size: 0.75rem;
+}
+
+.month-card .compilation-status .badge.cached {
+    background: rgba(76, 175, 80, 0.2);
+    color: #81c784;
+}
+
+.month-card .compilation-status .badge.not-cached {
+    background: rgba(158, 158, 158, 0.2);
+    color: #9e9e9e;
+}
+
+/* Video player */
+.video-player {
+    margin-top: 30px;
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.video-player.hidden {
+    display: none;
+}
+
+.player-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 20px;
+    background: rgba(0, 0, 0, 0.3);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.player-header h2 {
+    font-size: 1.2rem;
+    font-weight: 500;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    color: #aaa;
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 5px 10px;
+    transition: color 0.3s;
+}
+
+.close-btn:hover {
+    color: #ff5e62;
+}
+
+.player-content {
+    position: relative;
+    background: #000;
+}
+
+.player-content video {
+    width: 100%;
+    max-height: 70vh;
+    display: block;
+}
+
+.player-loading {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.player-loading.hidden {
+    display: none;
+}
+
+.player-loading p {
+    margin-top: 15px;
+    color: #aaa;
+}
+
+.player-meta {
+    padding: 15px 20px;
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    font-size: 0.9rem;
+    color: #aaa;
+}
+
+.player-meta .meta-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.player-meta .meta-label {
+    color: #888;
+}
+
+/* Action buttons in month card */
+.month-card .actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.month-card .action-btn {
+    flex: 1;
+    padding: 8px 12px;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.3s, transform 0.2s;
+}
+
+.month-card .action-btn.sunrise {
+    background: linear-gradient(135deg, #ffcc80, #ffab40);
+    color: #1a1a2e;
+}
+
+.month-card .action-btn.sunset {
+    background: linear-gradient(135deg, #ff8a65, #ff5722);
+    color: #fff;
+}
+
+.month-card .action-btn.all {
+    background: linear-gradient(135deg, #b39ddb, #7e57c2);
+    color: #fff;
+}
+
+.month-card .action-btn:hover {
+    transform: scale(1.02);
+}
+
+.month-card .action-btn:active {
+    transform: scale(0.98);
+}
+
+/* Footer */
+footer {
+    margin-top: 40px;
+    padding-top: 20px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    text-align: center;
+    color: #666;
+    font-size: 0.85rem;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    header {
+        flex-direction: column;
+        gap: 15px;
+        text-align: center;
+    }
+
+    h1 {
+        font-size: 1.4rem;
+    }
+
+    .filters {
+        justify-content: center;
+    }
+
+    .months-grid {
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    }
+
+    .month-card .actions {
+        flex-direction: column;
+    }
+}
+
+/* Empty state */
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: #888;
+}
+
+.empty-state h3 {
+    font-size: 1.2rem;
+    margin-bottom: 10px;
+}
+
+/* Error state */
+.error-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: #ff5e62;
+    background: rgba(255, 94, 98, 0.1);
+    border-radius: 12px;
+    margin: 20px 0;
+}
+
+.error-state h3 {
+    margin-bottom: 10px;
+}
+
+.error-state button {
+    margin-top: 15px;
+    padding: 10px 20px;
+    background: #ff5e62;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+}

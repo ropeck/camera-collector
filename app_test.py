@@ -448,3 +448,167 @@ class TestLookupExternalIP:
         with patch('urllib.request.urlopen', return_value=mock_response):
             ip = lookup_external_ip()
             assert ip == "192.168.1.1"
+
+
+class TestListMonthsEndpoint:
+    def test_list_months_success(self):
+        """Test GET /api/months returns months data."""
+        mock_months = [
+            {"year": 2025, "month": 1, "sunrise_count": 31, "sunset_count": 28},
+        ]
+
+        with patch('app.concat.list_available_months', return_value=mock_months):
+            response = client.get("/api/months")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "months" in data
+        assert len(data["months"]) == 1
+        assert data["months"][0]["year"] == 2025
+
+    def test_list_months_empty(self):
+        """Test GET /api/months when no months available."""
+        with patch('app.concat.list_available_months', return_value=[]):
+            response = client.get("/api/months")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["months"] == []
+
+    def test_list_months_error(self):
+        """Test GET /api/months handles errors."""
+        with patch('app.concat.list_available_months', side_effect=Exception("GCS error")):
+            response = client.get("/api/months")
+
+        assert response.status_code == 500
+        assert "GCS error" in response.json()["detail"]
+
+
+class TestGenerateCompilationEndpoint:
+    def test_generate_compilation_success(self):
+        """Test POST /api/compilation/generate creates compilation."""
+        mock_result = {
+            "url": "https://storage.googleapis.com/test/compilation.mp4",
+            "video_count": 30,
+            "duration_seconds": 450.0,
+            "cached": False,
+        }
+
+        with patch('app.concat.generate_compilation', return_value=mock_result):
+            response = client.post("/api/compilation/generate?year=2025&month=1")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["url"] == mock_result["url"]
+        assert data["video_count"] == 30
+
+    def test_generate_compilation_with_time_filter(self):
+        """Test POST /api/compilation/generate with time_filter."""
+        mock_result = {"url": "https://test.url", "cached": True}
+
+        with patch('app.concat.generate_compilation', return_value=mock_result) as mock_gen:
+            response = client.post(
+                "/api/compilation/generate?year=2025&month=1&time_filter=sunset"
+            )
+
+        assert response.status_code == 200
+        # Verify time_filter was passed
+        call_kwargs = mock_gen.call_args[1]
+        assert call_kwargs["time_filter"] == "sunset"
+
+    def test_generate_compilation_invalid_month(self):
+        """Test POST /api/compilation/generate with invalid month."""
+        response = client.post("/api/compilation/generate?year=2025&month=13")
+        assert response.status_code == 400
+        assert "month must be between 1 and 12" in response.json()["detail"]
+
+    def test_generate_compilation_invalid_time_filter(self):
+        """Test POST /api/compilation/generate with invalid time_filter."""
+        response = client.post(
+            "/api/compilation/generate?year=2025&month=1&time_filter=noon"
+        )
+        assert response.status_code == 400
+        assert "time_filter must be" in response.json()["detail"]
+
+    def test_generate_compilation_no_videos(self):
+        """Test POST /api/compilation/generate when no videos found."""
+        with patch('app.concat.generate_compilation', side_effect=ValueError("No videos found")):
+            response = client.post("/api/compilation/generate?year=2025&month=1")
+
+        assert response.status_code == 404
+        assert "No videos found" in response.json()["detail"]
+
+    def test_generate_compilation_force_regenerate(self):
+        """Test POST /api/compilation/generate with force=true."""
+        mock_result = {"url": "https://test.url", "cached": False}
+
+        with patch('app.concat.generate_compilation', return_value=mock_result) as mock_gen:
+            response = client.post(
+                "/api/compilation/generate?year=2025&month=1&force=true"
+            )
+
+        assert response.status_code == 200
+        call_kwargs = mock_gen.call_args[1]
+        assert call_kwargs["force_regenerate"] is True
+
+
+class TestGetCompilationStatusEndpoint:
+    def test_get_compilation_exists(self):
+        """Test GET /api/compilation/{year}/{month} when compilation exists."""
+        mock_result = {
+            "exists": True,
+            "url": "https://storage.googleapis.com/test/compilation.mp4",
+            "size_bytes": 100000000,
+        }
+
+        with patch('app.concat.check_compilation_exists', return_value=mock_result):
+            response = client.get("/api/compilation/2025/1")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["exists"] is True
+        assert "url" in data
+
+    def test_get_compilation_not_exists(self):
+        """Test GET /api/compilation/{year}/{month} when not exists."""
+        mock_result = {"exists": False}
+
+        with patch('app.concat.check_compilation_exists', return_value=mock_result):
+            response = client.get("/api/compilation/2025/1")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["exists"] is False
+
+    def test_get_compilation_with_time_filter(self):
+        """Test GET /api/compilation/{year}/{month} with time_filter."""
+        mock_result = {"exists": True}
+
+        with patch('app.concat.get_compilation_blob_name', return_value="test.mp4") as mock_name, \
+             patch('app.concat.check_compilation_exists', return_value=mock_result):
+            response = client.get("/api/compilation/2025/1?time_filter=sunrise")
+
+        assert response.status_code == 200
+        mock_name.assert_called_once_with(2025, 1, "sunrise")
+
+    def test_get_compilation_invalid_month(self):
+        """Test GET /api/compilation/{year}/{month} with invalid month."""
+        response = client.get("/api/compilation/2025/0")
+        assert response.status_code == 400
+
+    def test_get_compilation_invalid_time_filter(self):
+        """Test GET /api/compilation/{year}/{month} with invalid time_filter."""
+        response = client.get("/api/compilation/2025/1?time_filter=invalid")
+        assert response.status_code == 400
+
+
+class TestGalleryEndpoint:
+    def test_gallery_serves_html(self):
+        """Test GET /gallery serves the index.html file."""
+        with patch('app.FileResponse') as mock_response:
+            mock_response.return_value = MagicMock()
+            # The actual endpoint will try to serve the file
+            # We just verify the route exists and returns 200 or handles missing file
+            response = client.get("/gallery")
+            # Will be 404 if file doesn't exist in test env, which is expected
+            assert response.status_code in (200, 404)

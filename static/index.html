@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Beach Sunrise/Sunset Gallery</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Beach Sunrise/Sunset Gallery</h1>
+            <div class="filters">
+                <label for="year-filter">Year:</label>
+                <select id="year-filter">
+                    <option value="">All Years</option>
+                </select>
+
+                <label for="time-filter">Time:</label>
+                <select id="time-filter">
+                    <option value="">All</option>
+                    <option value="sunrise">Sunrise</option>
+                    <option value="sunset">Sunset</option>
+                </select>
+            </div>
+        </header>
+
+        <main>
+            <div id="loading" class="loading">
+                <div class="spinner"></div>
+                <p>Loading months...</p>
+            </div>
+
+            <div id="months-grid" class="months-grid"></div>
+
+            <div id="video-player" class="video-player hidden">
+                <div class="player-header">
+                    <h2 id="player-title"></h2>
+                    <button id="close-player" class="close-btn">&times;</button>
+                </div>
+                <div class="player-content">
+                    <video id="video" controls>
+                        <source id="video-source" type="video/mp4">
+                        Your browser does not support the video tag.
+                    </video>
+                    <div id="player-loading" class="player-loading hidden">
+                        <div class="spinner"></div>
+                        <p id="player-loading-text">Generating compilation...</p>
+                    </div>
+                </div>
+                <div class="player-meta" id="player-meta"></div>
+            </div>
+        </main>
+
+        <footer>
+            <p>Seacliff Beach Camera Compilations</p>
+        </footer>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

@@ -2,7 +2,8 @@ import json
 from collections import UserDict
 from datetime import datetime
 from fastapi import FastAPI, Query, Request, WebSocket, WebSocketDisconnect, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from google.cloud import storage
 from typing import Optional
 import asyncio
@@ -14,6 +15,7 @@ import uuid
 import urllib.request
 
 import collage
+import concat
 
 app = FastAPI()
 
@@ -276,7 +278,16 @@ async def collect_and_upload_video(job_id: str, youtube_url: str):
 @app.get("/")
 async def root():
     version_info = ("BUILD_TIME: " + BUILD_TIME) if BUILD_TIME else ("SERVER_START_TIME: " + SERVER_START_TIME)
-    return JSONResponse({"message": "Camera Collector API is running!", "version": version_info})
+    return JSONResponse({
+        "message": "Camera Collector API is running!",
+        "version": version_info,
+        "gallery_url": "/gallery",
+        "api_endpoints": {
+            "months": "/api/months",
+            "generate_compilation": "/api/compilation/generate",
+            "compilation_status": "/api/compilation/{year}/{month}",
+        }
+    })
 
 @app.post("/collection/start/{youtube_url:path}")
 async def start_collection(youtube_url: Optional[str] = None):
@@ -404,6 +415,123 @@ async def websocket_latest_endpoint(websocket: WebSocket):
             await websocket.receive_text()  # Keep connection alive
     except WebSocketDisconnect:
         latest_video_manager.disconnect(websocket)
+
+
+# ============================================================================
+# Monthly Compilation API Endpoints
+# ============================================================================
+
+
+@app.get("/api/months")
+async def list_months():
+    """
+    List all available months with video counts and compilation status.
+
+    Returns a list of months that have videos, along with counts for
+    sunrise/sunset videos and whether compilations exist.
+    """
+    logging.info("Fetching available months")
+    try:
+        months = await asyncio.to_thread(
+            concat.list_available_months,
+            storage_client,
+            BUCKET_NAME,
+        )
+        return JSONResponse({"months": months})
+    except Exception as e:
+        logging.error(f"Error listing months: {e}")
+        raise HTTPException(status_code=500, detail=f"Error listing months: {str(e)}")
+
+
+@app.post("/api/compilation/generate")
+async def generate_compilation(
+    year: int = Query(..., description="Year of the compilation"),
+    month: int = Query(..., description="Month of the compilation (1-12)"),
+    time_filter: Optional[str] = Query(None, description="Filter: 'sunrise', 'sunset', or omit for all"),
+    force: bool = Query(False, description="Force regeneration even if cached"),
+):
+    """
+    Generate or retrieve a monthly video compilation.
+
+    Concatenates daily videos into a monthly compilation. If a compilation
+    already exists, returns the cached version unless force=true.
+    """
+    logging.info(f"Generating compilation: year={year}, month={month}, time_filter={time_filter}, force={force}")
+
+    # Validate inputs
+    if month < 1 or month > 12:
+        raise HTTPException(status_code=400, detail="month must be between 1 and 12")
+    if time_filter and time_filter not in ("sunrise", "sunset"):
+        raise HTTPException(status_code=400, detail="time_filter must be 'sunrise' or 'sunset'")
+
+    try:
+        result = await asyncio.to_thread(
+            concat.generate_compilation,
+            storage_client,
+            BUCKET_NAME,
+            year=year,
+            month=month,
+            time_filter=time_filter,
+            force_regenerate=force,
+        )
+        logging.info(f"Compilation result: {result}")
+        return JSONResponse(result)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logging.error(f"Error generating compilation: {e}")
+        raise HTTPException(status_code=500, detail=f"Error generating compilation: {str(e)}")
+
+
+@app.get("/api/compilation/{year}/{month}")
+async def get_compilation_status(
+    year: int,
+    month: int,
+    time_filter: Optional[str] = Query(None, description="Filter: 'sunrise', 'sunset', or omit for all"),
+):
+    """
+    Get status and metadata for a compilation.
+
+    Returns whether the compilation exists and its metadata if it does.
+    """
+    logging.info(f"Checking compilation status: year={year}, month={month}, time_filter={time_filter}")
+
+    # Validate inputs
+    if month < 1 or month > 12:
+        raise HTTPException(status_code=400, detail="month must be between 1 and 12")
+    if time_filter and time_filter not in ("sunrise", "sunset"):
+        raise HTTPException(status_code=400, detail="time_filter must be 'sunrise' or 'sunset'")
+
+    try:
+        blob_name = concat.get_compilation_blob_name(year, month, time_filter)
+        result = await asyncio.to_thread(
+            concat.check_compilation_exists,
+            storage_client,
+            BUCKET_NAME,
+            blob_name,
+        )
+        return JSONResponse(result)
+    except Exception as e:
+        logging.error(f"Error checking compilation: {e}")
+        raise HTTPException(status_code=500, detail=f"Error checking compilation: {str(e)}")
+
+
+# ============================================================================
+# Gallery Static Files
+# ============================================================================
+
+
+@app.get("/gallery")
+async def gallery():
+    """
+    Serve the gallery single-page application.
+    """
+    return FileResponse("static/index.html")
+
+
+# Mount static files directory
+# Note: This must be after all other routes to avoid catching API routes
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 if __name__ == "__main__":

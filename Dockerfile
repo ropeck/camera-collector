@@ -39,6 +39,9 @@ COPY app.py /app/app.py
 COPY sun.py /app/sun.py
 COPY start_collection.py /app/start_collection.py
 COPY endpoint.sh /app/endpoint.sh
+COPY collage.py /app/collage.py
+COPY concat.py /app/concat.py
+COPY static/ /app/static/
 
 # Ensure scripts have executable permissions
 RUN chmod +x /app/*.sh /app/*.py
