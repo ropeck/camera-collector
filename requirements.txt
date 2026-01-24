@@ -3,6 +3,7 @@ fastapi
 google-cloud-storage
 httpx         # For making async HTTP requests (e.g., test clients)
 pytest        # For API testing
+pytest-asyncio  # For async test support
 pytz
 requests
 uvicorn

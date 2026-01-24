@@ -25,18 +25,29 @@ def run_script(run_time):
     log(command)
     os.system(command)
 
-log("starting collection scheduling")
+def get_location():
+    """Get the LocationInfo for Seacliff, CA."""
+    return LocationInfo("Seacliff", "USA", "America/Los_Angeles", 36.9741, -121.9158)
 
-location = LocationInfo("Seacliff", "USA", "America/Los_Angeles", 36.9741, -121.9158)
-local_tz = pytz.timezone(location.timezone)
 
-today = datetime.now(local_tz)
-s = sun(location.observer, date=today)
+def schedule_collections():
+    """Main function to schedule sunrise/sunset video collections."""
+    log("starting collection scheduling")
 
-sunset_local = as_local_time(s['sunset'])
-sunrise_local = as_local_time(s['sunrise'])
+    location = get_location()
+    local_tz = pytz.timezone(location.timezone)
 
-run_script(sunrise_local)
-run_script(sunset_local - timedelta(minutes=15))
-run_script(sunset_local)
-os.system("/usr/bin/atq")
+    today = datetime.now(local_tz)
+    s = sun(location.observer, date=today)
+
+    sunset_local = as_local_time(s['sunset'])
+    sunrise_local = as_local_time(s['sunrise'])
+
+    run_script(sunrise_local)
+    run_script(sunset_local - timedelta(minutes=15))
+    run_script(sunset_local)
+    os.system("/usr/bin/atq")
+
+
+if __name__ == "__main__":
+    schedule_collections()

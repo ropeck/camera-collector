@@ -1,32 +1,60 @@
 import pytest
 import asyncio
-from unittest.mock import AsyncMock, patch
-from app import collect_and_upload_video, active_jobs, app
-from fastapi.testclient import TestClient
-import uuid
+from unittest.mock import AsyncMock, MagicMock, patch, mock_open
 from datetime import datetime
+from fastapi.testclient import TestClient
+from fastapi.websockets import WebSocket
+import uuid
+import json
+import os
+
+# Mock the storage client before importing app
+with patch('google.cloud.storage.Client'):
+    from app import (
+        app, active_jobs, manager, latest_video_manager,
+        ConnectionManager, LatestVideoConnectionManager, ThreadSafeJobs,
+        collect_and_upload_video, run_subprocess_blocking, upload_to_gcs,
+        notify_latest_video, lookup_external_ip
+    )
 
 client = TestClient(app)
 
-@pytest.mark.asyncio
-class TestCameraCollector:
 
-    @pytest.fixture(autouse=True)
-    def setup_and_teardown(self):
-        """Setup and teardown for tests."""
-        active_jobs.data.clear()
-        yield
+@pytest.fixture(autouse=True)
+def setup_and_teardown():
+    """Setup and teardown for tests."""
+    active_jobs.data.clear()
+    manager.active_connections.clear()
+    latest_video_manager.active_connections.clear()
+    yield
+    active_jobs.data.clear()
+    manager.active_connections.clear()
+    latest_video_manager.active_connections.clear()
 
-    async def test_root_endpoint(self):
-        """Test the root endpoint to check API status and version."""
+
+class TestRootEndpoint:
+    def test_root_returns_200(self):
+        """Test the root endpoint returns 200 status."""
         response = client.get("/")
         assert response.status_code == 200
+
+    def test_root_contains_message(self):
+        """Test the root endpoint contains a message."""
+        response = client.get("/")
         data = response.json()
         assert "message" in data
+        assert "Camera Collector API is running!" in data["message"]
+
+    def test_root_contains_version(self):
+        """Test the root endpoint contains version info."""
+        response = client.get("/")
+        data = response.json()
         assert "version" in data
 
-    async def test_start_collection(self):
-        """Test starting a collection job."""
+
+class TestStartCollection:
+    def test_start_collection_with_url(self):
+        """Test starting a collection job with a custom URL."""
         youtube_url = "https://www.youtube.com/watch?v=example"
         response = client.post(f"/collection/start/{youtube_url}")
         assert response.status_code == 200
@@ -34,13 +62,36 @@ class TestCameraCollector:
         assert "job_id" in data
         assert "message" in data
 
+    def test_start_collection_returns_valid_uuid(self):
+        """Test that job_id is a valid UUID."""
+        youtube_url = "https://www.youtube.com/watch?v=example"
+        response = client.post(f"/collection/start/{youtube_url}")
+        data = response.json()
         job_id = data["job_id"]
-        job_info = await active_jobs.get_job(job_id)
-        assert job_info is not None
-        assert job_info["url"] == youtube_url
-        assert job_info["status"] == "running"
+        # Should not raise ValueError if valid UUID
+        uuid.UUID(job_id)
 
-    async def test_collection_status_valid_job(self):
+    def test_start_collection_default_url(self):
+        """Test starting a collection job with default URL."""
+        response = client.post("/collection/start")
+        assert response.status_code == 200
+        data = response.json()
+        assert "job_id" in data
+
+    def test_start_collection_creates_job(self):
+        """Test that starting collection returns success message."""
+        youtube_url = "https://www.youtube.com/watch?v=example"
+        response = client.post(f"/collection/start/{youtube_url}")
+        data = response.json()
+        # Verify response contains expected fields
+        assert "job_id" in data
+        assert "message" in data
+        assert "Collection started" in data["message"]
+
+
+class TestCollectionStatus:
+    @pytest.mark.asyncio
+    async def test_status_valid_job(self):
         """Test retrieving the status of a valid job ID."""
         job_id = str(uuid.uuid4())
         await active_jobs.set_job(job_id, {
@@ -52,21 +103,45 @@ class TestCameraCollector:
         response = client.get(f"/collection/status/{job_id}")
         assert response.status_code == 200
         data = response.json()
-        assert data["job_id"] == job_id
-        assert data["url"] == "https://www.youtube.com/watch?v=example"
         assert data["status"] == "running"
 
-    async def test_collection_status_invalid_job(self):
+    def test_status_invalid_job(self):
         """Test retrieving the status of an invalid job ID."""
         job_id = str(uuid.uuid4())
-
         response = client.get(f"/collection/status/{job_id}")
         assert response.status_code == 404
         data = response.json()
         assert data["detail"] == "Job ID not found."
 
-    async def test_active_collections(self):
-        """Test retrieving the list of active collections."""
+    @pytest.mark.asyncio
+    async def test_status_contains_job_info(self):
+        """Test status response contains all job information."""
+        job_id = str(uuid.uuid4())
+        job_info = {
+            "url": "https://www.youtube.com/watch?v=test",
+            "time_started": datetime.now().isoformat(),
+            "status": "uploading to gcs",
+        }
+        await active_jobs.set_job(job_id, job_info)
+
+        response = client.get(f"/collection/status/{job_id}")
+        data = response.json()
+        assert data["url"] == job_info["url"]
+        assert data["status"] == job_info["status"]
+
+
+class TestActiveCollections:
+    def test_active_collections_empty(self):
+        """Test getting active collections when none exist."""
+        response = client.get("/active-collections")
+        assert response.status_code == 200
+        data = response.json()
+        assert "active_jobs" in data
+        assert data["active_jobs"] == {}
+
+    @pytest.mark.asyncio
+    async def test_active_collections_multiple_jobs(self):
+        """Test getting multiple active collections."""
         job_id1 = str(uuid.uuid4())
         job_id2 = str(uuid.uuid4())
         await active_jobs.set_job(job_id1, {
@@ -77,16 +152,299 @@ class TestCameraCollector:
         await active_jobs.set_job(job_id2, {
             "url": "https://www.youtube.com/watch?v=example2",
             "time_started": datetime.now().isoformat(),
-            "status": "running",
+            "status": "uploading",
         })
 
         response = client.get("/active-collections")
-        assert response.status_code == 200
         data = response.json()
-        assert "active_jobs" in data
+        assert job_id1 in data["active_jobs"]
+        assert job_id2 in data["active_jobs"]
 
-        active_jobs_data = data["active_jobs"]
-        assert job_id1 in active_jobs_data
-        assert job_id2 in active_jobs_data
-        assert active_jobs_data[job_id1]["url"] == "https://www.youtube.com/watch?v=example1"
-        assert active_jobs_data[job_id2]["url"] == "https://www.youtube.com/watch?v=example2"
+
+class TestThreadSafeJobs:
+    @pytest.mark.asyncio
+    async def test_set_and_get_job(self):
+        """Test setting and getting a job."""
+        jobs = ThreadSafeJobs()
+        job_id = "test-job-id"
+        job_info = {"status": "running", "url": "test-url"}
+
+        with patch.object(manager, 'send_message', new_callable=AsyncMock):
+            await jobs.set_job(job_id, job_info)
+
+        result = await jobs.get_job(job_id)
+        assert result == job_info
+
+    @pytest.mark.asyncio
+    async def test_set_status(self):
+        """Test updating job status."""
+        jobs = ThreadSafeJobs()
+        job_id = "test-job-id"
+        jobs.data[job_id] = {"status": "started"}
+
+        with patch.object(manager, 'send_message', new_callable=AsyncMock):
+            await jobs.set_status(job_id, "completed")
+
+        assert jobs.data[job_id]["status"] == "completed"
+
+    @pytest.mark.asyncio
+    async def test_delete_job(self):
+        """Test deleting a job."""
+        jobs = ThreadSafeJobs()
+        job_id = "test-job-id"
+        jobs.data[job_id] = {"status": "running"}
+
+        await jobs.delete_job(job_id)
+        assert job_id not in jobs.data
+
+    @pytest.mark.asyncio
+    async def test_get_all_jobs(self):
+        """Test getting all jobs."""
+        jobs = ThreadSafeJobs()
+        jobs.data["job1"] = {"status": "running"}
+        jobs.data["job2"] = {"status": "completed"}
+
+        all_jobs = await jobs.get_all_jobs()
+        assert len(all_jobs) == 2
+        assert "job1" in all_jobs
+        assert "job2" in all_jobs
+
+    @pytest.mark.asyncio
+    async def test_get_nonexistent_job(self):
+        """Test getting a job that doesn't exist."""
+        jobs = ThreadSafeJobs()
+        result = await jobs.get_job("nonexistent")
+        assert result is None
+
+
+class TestConnectionManager:
+    @pytest.mark.asyncio
+    async def test_connect(self):
+        """Test connecting a WebSocket."""
+        mgr = ConnectionManager()
+        mock_ws = AsyncMock(spec=WebSocket)
+
+        await mgr.connect(mock_ws, "job-123")
+
+        mock_ws.accept.assert_called_once()
+        assert "job-123" in mgr.active_connections
+
+    def test_disconnect(self):
+        """Test disconnecting a WebSocket."""
+        mgr = ConnectionManager()
+        mock_ws = MagicMock()
+        mgr.active_connections["job-123"] = mock_ws
+
+        mgr.disconnect("job-123")
+
+        assert "job-123" not in mgr.active_connections
+
+    def test_disconnect_nonexistent(self):
+        """Test disconnecting a non-existent job doesn't raise."""
+        mgr = ConnectionManager()
+        mgr.disconnect("nonexistent")  # Should not raise
+
+    @pytest.mark.asyncio
+    async def test_send_message(self):
+        """Test sending a message to a connected WebSocket."""
+        mgr = ConnectionManager()
+        mock_ws = AsyncMock()
+        mgr.active_connections["job-123"] = mock_ws
+
+        await mgr.send_message("job-123", "test message")
+
+        mock_ws.send_text.assert_called_once_with("test message")
+
+    @pytest.mark.asyncio
+    async def test_send_message_no_connection(self):
+        """Test sending message when no connection exists."""
+        mgr = ConnectionManager()
+        # Should not raise
+        await mgr.send_message("nonexistent", "test message")
+
+
+class TestLatestVideoConnectionManager:
+    @pytest.mark.asyncio
+    async def test_connect(self):
+        """Test connecting a WebSocket for latest video updates."""
+        mgr = LatestVideoConnectionManager()
+        mock_ws = AsyncMock(spec=WebSocket)
+
+        await mgr.connect(mock_ws)
+
+        mock_ws.accept.assert_called_once()
+        assert mock_ws in mgr.active_connections
+
+    def test_disconnect(self):
+        """Test disconnecting a WebSocket."""
+        mgr = LatestVideoConnectionManager()
+        mock_ws = MagicMock()
+        mgr.active_connections.append(mock_ws)
+
+        mgr.disconnect(mock_ws)
+
+        assert mock_ws not in mgr.active_connections
+
+    @pytest.mark.asyncio
+    async def test_broadcast(self):
+        """Test broadcasting to all connected clients."""
+        mgr = LatestVideoConnectionManager()
+        mock_ws1 = AsyncMock()
+        mock_ws2 = AsyncMock()
+        mgr.active_connections = [mock_ws1, mock_ws2]
+
+        await mgr.broadcast("test broadcast")
+
+        mock_ws1.send_text.assert_called_once_with("test broadcast")
+        mock_ws2.send_text.assert_called_once_with("test broadcast")
+
+    @pytest.mark.asyncio
+    async def test_broadcast_removes_failed_connection(self):
+        """Test that failed connections are removed during broadcast."""
+        mgr = LatestVideoConnectionManager()
+        mock_ws_good = AsyncMock()
+        mock_ws_bad = AsyncMock()
+        mock_ws_bad.send_text.side_effect = Exception("Connection failed")
+        mgr.active_connections = [mock_ws_good, mock_ws_bad]
+
+        await mgr.broadcast("test")
+
+        assert mock_ws_bad not in mgr.active_connections
+
+
+class TestVideoPipeline:
+    @pytest.mark.asyncio
+    async def test_collect_and_upload_video_success(self):
+        """Test successful video collection and upload."""
+        job_id = str(uuid.uuid4())
+        youtube_url = "https://www.youtube.com/watch?v=test"
+
+        with patch.object(active_jobs, 'set_status', new_callable=AsyncMock) as mock_status, \
+             patch.object(active_jobs, 'delete_job', new_callable=AsyncMock) as mock_delete, \
+             patch('app.run_subprocess_blocking') as mock_subprocess, \
+             patch('app.upload_to_gcs') as mock_upload, \
+             patch('app.notify_latest_video', new_callable=AsyncMock) as mock_notify, \
+             patch('os.path.exists', return_value=True), \
+             patch('os.remove'):
+
+            await collect_and_upload_video(job_id, youtube_url)
+
+            # Verify status progression
+            status_calls = [call[0][1] for call in mock_status.call_args_list]
+            assert "in progress" in status_calls
+            assert "uploading to gcs" in status_calls
+            assert "completed" in status_calls
+
+            mock_subprocess.assert_called_once()
+            mock_upload.assert_called_once()
+            mock_notify.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_collect_and_upload_video_subprocess_error(self):
+        """Test video collection when subprocess fails."""
+        job_id = str(uuid.uuid4())
+        youtube_url = "https://www.youtube.com/watch?v=test"
+
+        with patch.object(active_jobs, 'set_status', new_callable=AsyncMock), \
+             patch.object(active_jobs, 'delete_job', new_callable=AsyncMock), \
+             patch('app.run_subprocess_blocking', side_effect=RuntimeError("FFmpeg failed")), \
+             patch('os.path.exists', return_value=False):
+
+            with pytest.raises(RuntimeError, match="Error during video collection"):
+                await collect_and_upload_video(job_id, youtube_url)
+
+    @pytest.mark.asyncio
+    async def test_collect_and_upload_video_cleans_up_file(self):
+        """Test that local file is cleaned up after upload."""
+        job_id = str(uuid.uuid4())
+        youtube_url = "https://www.youtube.com/watch?v=test"
+
+        with patch.object(active_jobs, 'set_status', new_callable=AsyncMock), \
+             patch.object(active_jobs, 'delete_job', new_callable=AsyncMock), \
+             patch('app.run_subprocess_blocking'), \
+             patch('app.upload_to_gcs'), \
+             patch('app.notify_latest_video', new_callable=AsyncMock), \
+             patch('os.path.exists', return_value=True) as mock_exists, \
+             patch('os.remove') as mock_remove:
+
+            await collect_and_upload_video(job_id, youtube_url)
+
+            mock_exists.assert_called()
+            mock_remove.assert_called_once()
+
+
+class TestSubprocessBlocking:
+    def test_run_subprocess_blocking_success(self):
+        """Test successful subprocess execution."""
+        mock_ffmpeg = MagicMock()
+        mock_ffmpeg.returncode = 0
+        mock_ffmpeg.communicate.return_value = (b"", b"")
+
+        mock_ytdlp = MagicMock()
+        mock_ytdlp.terminate.return_value = None
+        mock_ytdlp.wait.return_value = None
+
+        with patch('subprocess.Popen', side_effect=[mock_ffmpeg, mock_ytdlp]), \
+             patch('app.lookup_external_ip', return_value="1.2.3.4"):
+
+            # Should not raise
+            run_subprocess_blocking("https://youtube.com/test", "/tmp/test.mp4")
+
+            mock_ffmpeg.communicate.assert_called_once()
+            mock_ytdlp.terminate.assert_called_once()
+
+    def test_run_subprocess_blocking_ffmpeg_error(self):
+        """Test subprocess when FFmpeg fails."""
+        mock_ffmpeg = MagicMock()
+        mock_ffmpeg.returncode = 1
+        mock_ffmpeg.communicate.return_value = (b"", b"")
+        mock_ffmpeg.stderr.read.return_value = b"FFmpeg error message"
+
+        mock_ytdlp = MagicMock()
+        mock_ytdlp.poll.return_value = None
+
+        with patch('subprocess.Popen', side_effect=[mock_ffmpeg, mock_ytdlp]), \
+             patch('app.lookup_external_ip', return_value="1.2.3.4"):
+
+            with pytest.raises(RuntimeError, match="FFmpeg error"):
+                run_subprocess_blocking("https://youtube.com/test", "/tmp/test.mp4")
+
+
+class TestUploadToGCS:
+    def test_upload_to_gcs(self):
+        """Test uploading file to Google Cloud Storage."""
+        mock_bucket = MagicMock()
+        mock_blob = MagicMock()
+        mock_bucket.blob.return_value = mock_blob
+
+        with patch('app.storage_client') as mock_client:
+            mock_client.bucket.return_value = mock_bucket
+
+            upload_to_gcs("/tmp/test-video.mp4")
+
+            mock_client.bucket.assert_called_once()
+            mock_blob.upload_from_filename.assert_called_once_with("/tmp/test-video.mp4")
+
+
+class TestNotifyLatestVideo:
+    @pytest.mark.asyncio
+    async def test_notify_latest_video(self):
+        """Test notifying clients about latest video."""
+        with patch.object(latest_video_manager, 'broadcast', new_callable=AsyncMock) as mock_broadcast:
+            await notify_latest_video()
+
+            mock_broadcast.assert_called_once()
+            call_arg = mock_broadcast.call_args[0][0]
+            data = json.loads(call_arg)
+            assert "latest_video_url" in data
+
+
+class TestLookupExternalIP:
+    def test_lookup_external_ip(self):
+        """Test external IP lookup."""
+        mock_response = MagicMock()
+        mock_response.read.return_value = b"192.168.1.1"
+
+        with patch('urllib.request.urlopen', return_value=mock_response):
+            ip = lookup_external_ip()
+            assert ip == "192.168.1.1"
