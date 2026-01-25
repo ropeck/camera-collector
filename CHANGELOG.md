@@ -8,7 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Planned
 - Video compositing features
-- Concatenate videos into longer compilations
+
+## [0.7.0] - 2026-01-24
+
+### Added
+- Sunset gallery integration support for collector-webapp
+- 7 new tests for sunset-specific API usage:
+  - Verify `/api/months` returns sunset_count and has_sunset_compilation
+  - Test sunset compilation generation with time_filter=sunset
+  - Test sunset compilation status endpoint
+  - Test cached vs newly generated sunset compilations
+  - Test error handling for missing sunset videos
+
+### Documentation
+- Added PROJECT.md with comprehensive architecture documentation
 
 ## [0.6.0] - 2026-01-24
 
