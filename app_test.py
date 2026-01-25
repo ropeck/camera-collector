@@ -612,3 +612,137 @@ class TestGalleryEndpoint:
             response = client.get("/gallery")
             # Will be 404 if file doesn't exist in test env, which is expected
             assert response.status_code in (200, 404)
+
+
+class TestSunsetGalleryIntegration:
+    """Tests for sunset gallery API integration."""
+
+    def test_list_months_includes_sunset_count(self):
+        """Test GET /api/months returns sunset_count for each month."""
+        mock_months = [
+            {
+                "year": 2025,
+                "month": 1,
+                "sunrise_count": 31,
+                "sunset_count": 28,
+                "total_count": 59,
+                "has_sunrise_compilation": False,
+                "has_sunset_compilation": True,
+                "has_all_compilation": False,
+            },
+        ]
+
+        with patch('app.concat.list_available_months', return_value=mock_months):
+            response = client.get("/api/months")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "months" in data
+        month = data["months"][0]
+        assert "sunset_count" in month
+        assert month["sunset_count"] == 28
+        assert "has_sunset_compilation" in month
+
+    def test_generate_sunset_compilation(self):
+        """Test POST /api/compilation/generate with time_filter=sunset."""
+        mock_result = {
+            "url": "https://storage.googleapis.com/bucket/2025/01/compilations/sunset-2025-01.mp4",
+            "video_count": 28,
+            "duration_seconds": 420.0,
+            "size_bytes": 85000000,
+            "cached": False,
+            "generated_at": "2025-01-24T12:00:00",
+        }
+
+        with patch('app.concat.generate_compilation', return_value=mock_result) as mock_gen:
+            response = client.post(
+                "/api/compilation/generate?year=2025&month=1&time_filter=sunset"
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["video_count"] == 28
+        assert "sunset" in data["url"]
+
+        # Verify sunset filter was passed to the function
+        call_kwargs = mock_gen.call_args[1]
+        assert call_kwargs["time_filter"] == "sunset"
+
+    def test_get_sunset_compilation_status(self):
+        """Test GET /api/compilation/{year}/{month}?time_filter=sunset."""
+        mock_result = {
+            "exists": True,
+            "url": "https://storage.googleapis.com/bucket/2025/01/compilations/sunset-2025-01.mp4",
+            "size_bytes": 85000000,
+            "updated": "2025-01-24T12:00:00Z",
+        }
+
+        with patch('app.concat.get_compilation_blob_name', return_value="2025/01/compilations/sunset-2025-01.mp4") as mock_name, \
+             patch('app.concat.check_compilation_exists', return_value=mock_result):
+            response = client.get("/api/compilation/2025/1?time_filter=sunset")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["exists"] is True
+        mock_name.assert_called_once_with(2025, 1, "sunset")
+
+    def test_sunset_compilation_not_exists(self):
+        """Test GET /api/compilation status when sunset compilation doesn't exist."""
+        mock_result = {"exists": False}
+
+        with patch('app.concat.get_compilation_blob_name', return_value="test.mp4"), \
+             patch('app.concat.check_compilation_exists', return_value=mock_result):
+            response = client.get("/api/compilation/2025/1?time_filter=sunset")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["exists"] is False
+
+    def test_generate_sunset_compilation_no_videos(self):
+        """Test generating sunset compilation when no sunset videos exist."""
+        with patch('app.concat.generate_compilation',
+                   side_effect=ValueError("No videos found for 2025/01 (sunset)")):
+            response = client.post(
+                "/api/compilation/generate?year=2025&month=1&time_filter=sunset"
+            )
+
+        assert response.status_code == 404
+        assert "No videos found" in response.json()["detail"]
+
+    def test_generate_sunset_compilation_cached(self):
+        """Test retrieving cached sunset compilation."""
+        mock_result = {
+            "url": "https://storage.googleapis.com/bucket/2025/01/compilations/sunset-2025-01.mp4",
+            "size_bytes": 85000000,
+            "cached": True,
+            "generated_at": "2025-01-20T12:00:00",
+        }
+
+        with patch('app.concat.generate_compilation', return_value=mock_result):
+            response = client.post(
+                "/api/compilation/generate?year=2025&month=1&time_filter=sunset"
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["cached"] is True
+
+    def test_multiple_months_with_sunset_data(self):
+        """Test listing multiple months all with sunset data."""
+        mock_months = [
+            {"year": 2025, "month": 1, "sunset_count": 28, "has_sunset_compilation": True},
+            {"year": 2024, "month": 12, "sunset_count": 30, "has_sunset_compilation": False},
+            {"year": 2024, "month": 11, "sunset_count": 25, "has_sunset_compilation": True},
+        ]
+
+        with patch('app.concat.list_available_months', return_value=mock_months):
+            response = client.get("/api/months")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["months"]) == 3
+
+        # Verify all months have sunset data
+        for month in data["months"]:
+            assert "sunset_count" in month
+            assert month["sunset_count"] > 0
