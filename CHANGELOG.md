@@ -13,12 +13,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 - Sunset gallery integration support for collector-webapp
-- 7 new tests for sunset-specific API usage:
-  - Verify `/api/months` returns sunset_count and has_sunset_compilation
-  - Test sunset compilation generation with time_filter=sunset
-  - Test sunset compilation status endpoint
-  - Test cached vs newly generated sunset compilations
-  - Test error handling for missing sunset videos
+- Automatic thumbnail generation for video compilations
+  - Extracts frame at 50% duration using ffmpeg
+  - Uploads thumbnails to GCS as `{filter}-{year}-{month}-thumb.jpg`
+  - Returns `thumbnail_url` in compilation API responses
+- New functions in `concat.py`:
+  - `extract_thumbnail()` - Extract frame from video
+  - `get_thumbnail_blob_name()` - Generate thumbnail blob path
+  - `upload_thumbnail_to_gcs()` - Upload thumbnail to GCS
+- 17 new tests:
+  - 7 tests for sunset-specific API usage
+  - 10 tests for thumbnail generation functionality
 
 ### Documentation
 - Added PROJECT.md with comprehensive architecture documentation
