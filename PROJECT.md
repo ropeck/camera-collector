@@ -237,10 +237,35 @@ fogcat-webcam/
 ### Kubernetes Resources
 
 **Deployment (k8s/deployment.yaml):**
-- 1 replica
+- 1 replica, strategy: Recreate (single e2-medium node)
 - Resource limits: 1GB memory / 500m CPU
-- Resource requests: 256MB memory / 250m CPU
-- GCP credentials mounted from secret
+- Resource requests: 256MB memory / 100m CPU
+- GCP credentials mounted from `gcp-credentials` k8s secret
+- Cluster: `my-first-cluster`, zone `us-west1-a`, project `k8s-project-441922`
+
+**Pod containers:**
+- `camera-collector` — FastAPI app, video capture, scheduling
+- `wireguard` — Surfshark VPN sidecar (linuxserver/wireguard image)
+- `route-manager` — sets up iptables NAT through wg0
+
+**Init containers (run at pod start, in order):**
+1. `init-sysctl` — enables ip_forward on the node
+2. `fetch-vpn-config` — fetches WireGuard config from GCP Secret Manager
+   (`surfshark-wg0-conf`, project `k8s-project-441922`) and writes to shared
+   `emptyDir` volume at `/config/wg_confs/wg0.conf`
+
+**WireGuard key rotation:**
+1. Delete old key from Surfshark portal (my.surfshark.com → VPN → Manual Setup → WireGuard)
+2. Create new key (name it `YYYYMMDD-vpn`)
+3. Update GCP secret:
+   ```bash
+   CLOUDSDK_ACTIVE_CONFIG_NAME=fogcat5 gcloud secrets versions add surfshark-wg0-conf \
+       --project=k8s-project-441922 --data-file=<new_conf>
+   ```
+4. Restart pod to pick up new config:
+   ```bash
+   kubectl rollout restart deployment/camera-collector
+   ```
 
 **Service (k8s/service.yaml):**
 - ClusterIP type
@@ -254,6 +279,10 @@ fogcat-webcam/
 4. Configure Google Cloud credentials
 5. Start FastAPI application
 6. Tail logs
+
+Note: yt-dlp downloads go through the Surfshark VPN (Netherlands exit node) to
+avoid YouTube bot detection. The VPN is managed by the wireguard sidecar; the
+camera-collector container routes its traffic through it automatically.
 
 ### CI/CD Pipeline
 

@@ -260,6 +260,89 @@ def upload_compilation_to_gcs(
     return f"https://storage.googleapis.com/{bucket_name}/{blob_name}"
 
 
+def extract_thumbnail(video_path: str, output_path: str, time_offset: float = None) -> bool:
+    """
+    Extract a thumbnail frame from a video using ffmpeg.
+
+    Args:
+        video_path: Path to the video file
+        output_path: Path for the output thumbnail image
+        time_offset: Time in seconds to extract frame (default: 50% of duration)
+
+    Returns:
+        True if successful, False otherwise
+    """
+    # If no time_offset specified, get duration and use 50%
+    if time_offset is None:
+        duration = get_video_duration(video_path)
+        time_offset = duration * 0.5 if duration > 0 else 5.0
+
+    cmd = [
+        "ffmpeg",
+        "-y",  # Overwrite output
+        "-ss", str(time_offset),  # Seek to time
+        "-i", video_path,
+        "-vframes", "1",  # Extract 1 frame
+        "-q:v", "2",  # High quality JPEG
+        output_path,
+    ]
+
+    logging.info(f"Extracting thumbnail at {time_offset}s: {' '.join(cmd)}")
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, timeout=30)
+        if result.returncode != 0:
+            logging.warning(f"Failed to extract thumbnail: {result.stderr.decode()}")
+            return False
+        logging.info(f"Created thumbnail: {output_path}")
+        return True
+    except subprocess.TimeoutExpired:
+        logging.warning("Thumbnail extraction timed out")
+        return False
+
+
+def get_thumbnail_blob_name(year: int, month: int, time_filter: Optional[str]) -> str:
+    """
+    Generate the blob name for a compilation thumbnail.
+
+    Args:
+        year: Year of the compilation
+        month: Month of the compilation
+        time_filter: "sunrise", "sunset", or None for all
+
+    Returns:
+        Blob name for the thumbnail
+    """
+    filter_name = time_filter if time_filter else "all"
+    return f"{year}/{month:02d}/compilations/{filter_name}-{year}-{month:02d}-thumb.jpg"
+
+
+def upload_thumbnail_to_gcs(
+    storage_client: storage.Client,
+    bucket_name: str,
+    local_path: str,
+    blob_name: str,
+) -> str:
+    """
+    Upload a thumbnail image to GCS.
+
+    Args:
+        storage_client: GCS client instance
+        bucket_name: Name of the GCS bucket
+        local_path: Local path of the thumbnail to upload
+        blob_name: Name for the blob in GCS
+
+    Returns:
+        Public URL of the uploaded thumbnail
+    """
+    bucket = storage_client.bucket(bucket_name)
+    blob = bucket.blob(blob_name)
+    blob.upload_from_filename(local_path, content_type="image/jpeg")
+
+    logging.info(f"Uploaded thumbnail to {blob_name}")
+    return f"https://storage.googleapis.com/{bucket_name}/{blob_name}"
+
+
 def get_video_duration(video_path: str) -> float:
     """
     Get the duration of a video in seconds using ffprobe.
@@ -326,9 +409,13 @@ def generate_compilation(
         existing = check_compilation_exists(storage_client, bucket_name, blob_name)
         if existing.get("exists"):
             logging.info(f"Using cached compilation: {blob_name}")
+            # Check for existing thumbnail
+            thumb_blob_name = get_thumbnail_blob_name(year, month, time_filter)
+            thumb_url = f"https://storage.googleapis.com/{bucket_name}/{thumb_blob_name}"
             return {
                 "url": existing["url"],
                 "size_bytes": existing["size_bytes"],
+                "thumbnail_url": thumb_url,
                 "cached": True,
                 "generated_at": existing["updated"],
             }
@@ -365,11 +452,21 @@ def generate_compilation(
         # Upload to GCS
         url = upload_compilation_to_gcs(storage_client, bucket_name, output_path, blob_name)
 
+        # Generate and upload thumbnail
+        thumbnail_path = os.path.join(tmp_dir, "thumbnail.jpg")
+        thumbnail_url = None
+        if extract_thumbnail(output_path, thumbnail_path):
+            thumb_blob_name = get_thumbnail_blob_name(year, month, time_filter)
+            thumbnail_url = upload_thumbnail_to_gcs(
+                storage_client, bucket_name, thumbnail_path, thumb_blob_name
+            )
+
     return {
         "url": url,
         "video_count": len(video_blobs),
         "duration_seconds": duration,
         "size_bytes": file_size,
+        "thumbnail_url": thumbnail_url,
         "cached": False,
         "generated_at": datetime.now().isoformat(),
     }

@@ -16,6 +16,9 @@ from concat import (
     generate_compilation,
     list_available_months,
     extract_hour_from_filename,
+    extract_thumbnail,
+    get_thumbnail_blob_name,
+    upload_thumbnail_to_gcs,
     SUNRISE_HOUR_RANGE,
     SUNSET_HOUR_RANGE,
 )
@@ -539,3 +542,141 @@ class TestTimeRanges:
     def test_sunset_range(self):
         """Test sunset hour range constants."""
         assert SUNSET_HOUR_RANGE == (16, 21)
+
+
+class TestThumbnailGeneration:
+    def test_get_thumbnail_blob_name_sunset(self):
+        """Test thumbnail blob name for sunset filter."""
+        result = get_thumbnail_blob_name(2025, 1, "sunset")
+        assert result == "2025/01/compilations/sunset-2025-01-thumb.jpg"
+
+    def test_get_thumbnail_blob_name_sunrise(self):
+        """Test thumbnail blob name for sunrise filter."""
+        result = get_thumbnail_blob_name(2025, 6, "sunrise")
+        assert result == "2025/06/compilations/sunrise-2025-06-thumb.jpg"
+
+    def test_get_thumbnail_blob_name_all(self):
+        """Test thumbnail blob name for no filter (all)."""
+        result = get_thumbnail_blob_name(2024, 12, None)
+        assert result == "2024/12/compilations/all-2024-12-thumb.jpg"
+
+    def test_extract_thumbnail_success(self):
+        """Test successful thumbnail extraction."""
+        with patch("concat.get_video_duration", return_value=30.0), \
+             patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+
+            result = extract_thumbnail("/tmp/video.mp4", "/tmp/thumb.jpg")
+
+            assert result is True
+            mock_run.assert_called_once()
+            # Verify ffmpeg was called with correct arguments
+            call_args = mock_run.call_args[0][0]
+            assert call_args[0] == "ffmpeg"
+            assert "-vframes" in call_args
+            assert "1" in call_args
+
+    def test_extract_thumbnail_with_custom_time(self):
+        """Test thumbnail extraction with custom time offset."""
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+
+            result = extract_thumbnail("/tmp/video.mp4", "/tmp/thumb.jpg", time_offset=10.0)
+
+            assert result is True
+            call_args = mock_run.call_args[0][0]
+            assert "10.0" in call_args
+
+    def test_extract_thumbnail_failure(self):
+        """Test thumbnail extraction when ffmpeg fails."""
+        with patch("concat.get_video_duration", return_value=30.0), \
+             patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=1, stderr=b"Error")
+
+            result = extract_thumbnail("/tmp/video.mp4", "/tmp/thumb.jpg")
+
+            assert result is False
+
+    def test_extract_thumbnail_timeout(self):
+        """Test thumbnail extraction when ffmpeg times out."""
+        import subprocess
+        with patch("concat.get_video_duration", return_value=30.0), \
+             patch("subprocess.run") as mock_run:
+            mock_run.side_effect = subprocess.TimeoutExpired(cmd="ffmpeg", timeout=30)
+
+            result = extract_thumbnail("/tmp/video.mp4", "/tmp/thumb.jpg")
+
+            assert result is False
+
+    def test_upload_thumbnail_to_gcs(self):
+        """Test uploading thumbnail to GCS."""
+        mock_blob = MagicMock()
+        mock_bucket = MagicMock()
+        mock_bucket.blob.return_value = mock_blob
+
+        mock_client = MagicMock()
+        mock_client.bucket.return_value = mock_bucket
+
+        result = upload_thumbnail_to_gcs(
+            mock_client, "test-bucket", "/tmp/thumb.jpg",
+            "2025/01/compilations/sunset-2025-01-thumb.jpg"
+        )
+
+        assert "storage.googleapis.com" in result
+        assert "test-bucket" in result
+        mock_blob.upload_from_filename.assert_called_once_with(
+            "/tmp/thumb.jpg", content_type="image/jpeg"
+        )
+
+    def test_generate_compilation_creates_thumbnail(self):
+        """Test that generate_compilation creates and uploads thumbnail."""
+        mock_blob_not_exists = MagicMock()
+        mock_blob_not_exists.exists.return_value = False
+
+        mock_video_blob = MagicMock()
+        mock_video_blob.name = "2025/01/seacliff-2025-01-24T18:30-00-0800.mp4"
+
+        mock_bucket = MagicMock()
+        mock_bucket.blob.return_value = mock_blob_not_exists
+        mock_bucket.list_blobs.return_value = [mock_video_blob]
+
+        mock_client = MagicMock()
+        mock_client.bucket.return_value = mock_bucket
+
+        with patch("concat.download_video_from_gcs"), \
+             patch("concat.concatenate_videos"), \
+             patch("concat.upload_compilation_to_gcs", return_value="https://test.url/video.mp4"), \
+             patch("concat.extract_thumbnail", return_value=True) as mock_extract, \
+             patch("concat.upload_thumbnail_to_gcs", return_value="https://test.url/thumb.jpg") as mock_upload_thumb, \
+             patch("concat.get_video_duration", return_value=15.0), \
+             patch("os.path.getsize", return_value=1000000):
+
+            result = generate_compilation(
+                mock_client, "test-bucket", year=2025, month=1, time_filter="sunset"
+            )
+
+        assert "thumbnail_url" in result
+        assert result["thumbnail_url"] == "https://test.url/thumb.jpg"
+        mock_extract.assert_called_once()
+        mock_upload_thumb.assert_called_once()
+
+    def test_cached_compilation_includes_thumbnail_url(self):
+        """Test that cached compilation response includes thumbnail URL."""
+        mock_blob = MagicMock()
+        mock_blob.exists.return_value = True
+        mock_blob.size = 1000000
+        mock_blob.updated = datetime(2025, 1, 24, 12, 0, 0)
+
+        mock_bucket = MagicMock()
+        mock_bucket.blob.return_value = mock_blob
+
+        mock_client = MagicMock()
+        mock_client.bucket.return_value = mock_bucket
+
+        result = generate_compilation(
+            mock_client, "test-bucket", year=2025, month=1, time_filter="sunset"
+        )
+
+        assert result["cached"] is True
+        assert "thumbnail_url" in result
+        assert "sunset-2025-01-thumb.jpg" in result["thumbnail_url"]
