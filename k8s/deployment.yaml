@@ -13,6 +13,42 @@ spec:
       labels:
         app: camera-collector
     spec:
+      volumes:
+        - name: gcp-credentials
+          secret:
+            secretName: gcp-credentials
+        - name: wireguard-config
+          emptyDir: {}
+
+      initContainers:
+      - name: init-sysctl
+        image: busybox:latest
+        securityContext:
+          privileged: true
+        command: ["sysctl", "-w", "net.ipv4.ip_forward=1"]
+
+      - name: fetch-vpn-config
+        image: google/cloud-sdk:slim
+        command:
+        - /bin/bash
+        - -c
+        - |
+          gcloud auth activate-service-account \
+            --key-file=/credentials/service-account-key.json
+          mkdir -p /config/wg_confs
+          gcloud secrets versions access latest \
+            --secret=surfshark-wg0-conf \
+            --project=k8s-project-441922 \
+            > /config/wg_confs/wg0.conf
+          chmod 600 /config/wg_confs/wg0.conf
+          echo "VPN config fetched from Secret Manager."
+        volumeMounts:
+        - name: gcp-credentials
+          mountPath: /credentials/service-account-key.json
+          subPath: service-account-key.json
+        - name: wireguard-config
+          mountPath: /config
+
       containers:
       - name: camera-collector
         image: fogcat5/camera-collector:latest
@@ -22,14 +58,63 @@ spec:
           mountPath: /app/service-account-key.json
           subPath: service-account-key.json
         env:
+          - name: TZ
+            value: "America/Los_Angeles"
         resources:
           requests:
             memory: "256Mi"
-            cpu: "250m"
+            cpu: "100m"
           limits:
             memory: "1024Mi"
             cpu: "500m"
-      volumes:
-      - name: gcp-credentials
-        secret:
-          secretName: gcp-credentials
+        securityContext:
+          capabilities:
+            add:
+              - NET_ADMIN
+
+      - name: wireguard
+        image: linuxserver/wireguard
+        securityContext:
+          privileged: true
+          capabilities:
+            add:
+              - NET_ADMIN
+              - NET_RAW
+        env:
+          - name: TZ
+            value: "America/Los_Angeles"
+          - name: SERVERPORT
+            value: "51820"
+          - name: PEERS
+            value: "1"
+        volumeMounts:
+          - name: wireguard-config
+            mountPath: /config
+
+      - name: route-manager
+        image: alpine:latest
+        securityContext:
+          privileged: true
+        command:
+          - /bin/sh
+          - -c
+          - |
+            apk add --no-cache iptables
+            echo "Waiting for wireguard to start..."
+            sleep 10
+
+            until ip link show wg0 >/dev/null 2>&1; do
+              echo "Waiting for wg0 interface..."
+              sleep 2
+            done
+            echo "wg0 interface found. Setting up routing..."
+
+            VPN_INTERFACE=wg0
+            POD_IFACE=eth0
+
+            iptables -t nat -A POSTROUTING -o $VPN_INTERFACE -j MASQUERADE
+            iptables -A FORWARD -i $POD_IFACE -o $VPN_INTERFACE -j ACCEPT
+            iptables -A FORWARD -i $VPN_INTERFACE -o $POD_IFACE -j ACCEPT
+
+            echo "VPN routing configured."
+            sleep infinity
