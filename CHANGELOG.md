@@ -9,6 +9,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Planned
 - Video compositing features
 
+## [0.7.1] - 2026-05-18
+
+### Security — Surfshark WireGuard key rotation required
+
+The Surfshark WireGuard private key used by this project was accidentally
+committed to a public GitHub repo (ropeck/youtube-backup) and has been revoked.
+
+- Old public key (deleted from Surfshark portal): `BfMOfE3YloVOOfwZniJ4Nn/jM7o/NZvzCgkyp53SsUk=`
+- New key name in Surfshark portal: **`20260518-vpn`**
+- New config in GCP Secret Manager: `surfshark-wg0-conf` v2, project `k8s-project-441922`
+
+**Action required before next GKE deploy:** The WireGuard config is stored in a
+PersistentVolumeClaim (`wireguard-pvc`, mounted at `/config/` in the
+`linuxserver/wireguard` sidecar). Update it with the new config:
+
+```bash
+# Fetch new config from Secret Manager
+CLOUDSDK_ACTIVE_CONFIG_NAME=fogcat5 \
+  gcloud secrets versions access latest \
+    --secret=surfshark-wg0-conf --project=k8s-project-441922 \
+  > /tmp/wg0.conf
+
+# Copy into running pod
+kubectl cp /tmp/wg0.conf \
+  $(kubectl get pod -l app=camera-collector -o name | head -1):/config/wg_confs/wg0.conf
+
+kubectl rollout restart deployment/camera-collector
+```
+
 ## [0.7.0] - 2026-01-24
 
 ### Added
