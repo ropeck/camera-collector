@@ -289,11 +289,26 @@ async def root():
         }
     })
 
+def _require_iap(request: Request) -> None:
+    """Reject requests that didn't come through the IAP-protected load balancer.
+
+    The Cloud Run service itself allows unauthenticated invocations (needed
+    so the LB's *open* backend service, fronting the read-only /api and
+    /gallery routes, can reach it at all) -- so this is the only thing
+    stopping someone from hitting /collection/start directly on the raw
+    *.run.app URL and bypassing IAP entirely. IAP adds this header itself;
+    it can't be spoofed by a direct caller.
+    """
+    if not request.headers.get("x-goog-authenticated-user-email"):
+        raise HTTPException(status_code=403, detail="IAP authentication required")
+
+
 @app.post("/collection/start/{youtube_url:path}")
-async def start_collection(youtube_url: Optional[str] = None):
+async def start_collection(request: Request, youtube_url: Optional[str] = None):
     """
     Starts a new collection job using the given YouTube URL or the default URL.
     """
+    _require_iap(request)
     youtube_url = youtube_url or DEFAULT_YOUTUBE_URL
 
     job_id = str(uuid.uuid4())
@@ -308,6 +323,7 @@ async def start_collection_root(request: Request, youtube_url: Optional[str] = N
     """
     Redirects to the /collection/start/{youtube_url:path} with the default YouTube URL if none is provided.
     """
+    _require_iap(request)
     youtube_url = DEFAULT_YOUTUBE_URL
 
     job_id = str(uuid.uuid4())

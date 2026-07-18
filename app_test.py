@@ -19,6 +19,8 @@ with patch('google.cloud.storage.Client'):
 
 client = TestClient(app)
 
+IAP_HEADERS = {"X-Goog-Authenticated-User-Email": "accounts.google.com:fogcat5@gmail.com"}
+
 
 @pytest.fixture(autouse=True)
 def setup_and_teardown():
@@ -56,7 +58,7 @@ class TestStartCollection:
     def test_start_collection_with_url(self):
         """Test starting a collection job with a custom URL."""
         youtube_url = "https://www.youtube.com/watch?v=example"
-        response = client.post(f"/collection/start/{youtube_url}")
+        response = client.post(f"/collection/start/{youtube_url}", headers=IAP_HEADERS)
         assert response.status_code == 200
         data = response.json()
         assert "job_id" in data
@@ -65,7 +67,7 @@ class TestStartCollection:
     def test_start_collection_returns_valid_uuid(self):
         """Test that job_id is a valid UUID."""
         youtube_url = "https://www.youtube.com/watch?v=example"
-        response = client.post(f"/collection/start/{youtube_url}")
+        response = client.post(f"/collection/start/{youtube_url}", headers=IAP_HEADERS)
         data = response.json()
         job_id = data["job_id"]
         # Should not raise ValueError if valid UUID
@@ -73,7 +75,7 @@ class TestStartCollection:
 
     def test_start_collection_default_url(self):
         """Test starting a collection job with default URL."""
-        response = client.post("/collection/start")
+        response = client.post("/collection/start", headers=IAP_HEADERS)
         assert response.status_code == 200
         data = response.json()
         assert "job_id" in data
@@ -81,12 +83,22 @@ class TestStartCollection:
     def test_start_collection_creates_job(self):
         """Test that starting collection returns success message."""
         youtube_url = "https://www.youtube.com/watch?v=example"
-        response = client.post(f"/collection/start/{youtube_url}")
+        response = client.post(f"/collection/start/{youtube_url}", headers=IAP_HEADERS)
         data = response.json()
         # Verify response contains expected fields
         assert "job_id" in data
         assert "message" in data
         assert "Collection started" in data["message"]
+
+    def test_start_collection_rejects_without_iap_header(self):
+        """Direct hits to the raw Cloud Run URL (no IAP header) must be rejected."""
+        youtube_url = "https://www.youtube.com/watch?v=example"
+        response = client.post(f"/collection/start/{youtube_url}")
+        assert response.status_code == 403
+
+    def test_start_collection_default_url_rejects_without_iap_header(self):
+        response = client.post("/collection/start")
+        assert response.status_code == 403
 
 
 class TestCollectionStatus:

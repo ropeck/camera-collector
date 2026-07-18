@@ -1,6 +1,10 @@
 # Camera Collector
 
-An automated system that captures frames from live YouTube streams (specifically beach webcam feeds), generates time-lapse videos, creates visual collages, and produces monthly video compilations. The system runs on Kubernetes with Google Cloud Storage integration.
+An automated system that captures frames from live YouTube streams (specifically beach webcam feeds), generates time-lapse videos, creates visual collages, and produces monthly video compilations. Google Cloud Storage backs everything.
+
+> **Deployment (as of 2026-07-18):** split across Cloud Run (this app's API/gallery)
+> and a NAS (the actual VPN-dependent capture). GKE is retired. See "Deployment"
+> below — the Kubernetes sections further down describe the old, now-inactive setup.
 
 ## Overview
 
@@ -234,7 +238,77 @@ fogcat-webcam/
 
 ## Deployment
 
-### Kubernetes Resources
+**Split architecture** (as of 2026-07-18): the FastAPI app (API, gallery, WebSocket)
+runs on **Cloud Run**; the actual video capture (which needs the Surfshark VPN to
+avoid YouTube bot detection) runs on a **NAS** (`pi@nas.lan`) via systemd timers.
+GKE is scaled to 0 and no longer live — see "Kubernetes Resources (retired)" below.
+
+### Cloud Run (app.py — API, gallery, compilation, collage)
+
+```bash
+gcloud builds submit . --project=k8s-project-441922 \
+  --tag us-central1-docker.pkg.dev/k8s-project-441922/cloud-run-source-deploy/camera-collector:TAG
+
+gcloud run deploy camera-collector --project=k8s-project-441922 --region=us-west1 \
+  --image=us-central1-docker.pkg.dev/k8s-project-441922/cloud-run-source-deploy/camera-collector:TAG \
+  --command=python3 --args=app.py \
+  --service-account=weather@k8s-project-441922.iam.gserviceaccount.com \
+  --set-env-vars="BUCKET_NAME=fogcat-webcam,SERVICE_ACCOUNT_FILE=/secrets/service-account-key.json" \
+  --set-secrets="/secrets/service-account-key.json=home-app-gcp-key:latest"
+```
+
+Traffic reaches Cloud Run via the shared `fogcat5-urlmap` load balancer (project
+`k8s-project-441922`, one LB covers every `*.fogcat5.com` app). Two backend
+services point at this same Cloud Run service, split by path:
+
+- `/` and `/collection/*` (the actual capture trigger) → `bes-camera-collector`,
+  **IAP-gated**
+- `/api/*`, `/collage/generate`, `/gallery`, `/static/*` → `bes-camera-collector-open`,
+  **public** — the Netlify video-archive viewer
+  (`legendary-figolla-368e7a.netlify.app`) fetches these directly from the browser
+  and can't do an interactive Google login
+
+Cloud Run's own IAM (`run.invoker`) is service-wide, not path-scoped, so making the
+open backend service work at all requires `allUsers` on the whole Cloud Run
+service — which would otherwise let anyone bypass IAP entirely by hitting
+`/collection/start` on the raw `*.run.app` URL directly. `_require_iap()` in
+`app.py` closes that gap: it checks for IAP's own `X-Goog-Authenticated-User-Email`
+header (which only IAP can set — not spoofable by a direct caller) before starting
+a capture, regardless of which URL was used to reach it.
+
+Deploying a new image via `gcloud run deploy` has been observed to reset the
+`run.invoker` IAM policy — re-grant both bindings after any redeploy:
+```bash
+gcloud run services add-iam-policy-binding camera-collector --project=k8s-project-441922 --region=us-west1 \
+  --member="serviceAccount:service-289658173247@gcp-sa-iap.iam.gserviceaccount.com" --role="roles/run.invoker"
+gcloud run services add-iam-policy-binding camera-collector --project=k8s-project-441922 --region=us-west1 \
+  --member="allUsers" --role="roles/run.invoker"
+```
+
+### NAS (capture.py, sun.py — the actual yt-dlp/ffmpeg capture)
+
+Runs on `pi@nas.lan` at `/home/pi/camera-collector/` — **not** this repo's code
+directly. `capture.py` there is a standalone extraction of
+`run_subprocess_blocking()`/`upload_to_gcs()` from this `app.py` (no
+FastAPI/WebSocket needed for a one-shot capture), and `sun.py` is the same
+astral-based scheduling logic in this repo, adapted to trigger the local script
+via `at` instead of POSTing to the (now IAP-gated) public API. Modeled on the
+sibling `frame-fetcher` setup on the same NAS — same Surfshark VPN, same
+`/var/lock/surfshark-vpn.lock` mutex (both scripts share one WireGuard identity
+and must not run concurrently, or the VPN provider misroutes return traffic
+between them).
+
+- Daily scheduler: `camera-collector-sun.timer` (systemd, 5am — mirrors the old
+  `0 5 * * * /app/sun.py` crontab below)
+- VPN: reuses the same `surfshark-wg0-conf` Secret Manager secret, brought up via
+  real kernel `wg-quick` (not a k8s sidecar) — this is what makes it work at all.
+  A userspace WireGuard-in-Cloud-Run attempt (`wireproxy`) completed the
+  handshake but couldn't pass data through Cloud Run's sandboxed network stack.
+- GCS upload timeout bumped to 600s (`upload_from_filename(..., timeout=600)`) —
+  the VPN tunnel's throughput for a full video (~2.5 min upload) exceeds the
+  client library's 120s default.
+
+### Kubernetes Resources (retired)
 
 **Deployment (k8s/deployment.yaml):**
 - 1 replica, strategy: Recreate (single e2-medium node)
@@ -286,13 +360,11 @@ camera-collector container routes its traffic through it automatically.
 
 ### CI/CD Pipeline
 
-Triggered on push to `main` branch:
-
-1. Build Docker image with Buildx
-2. Push to Docker Hub with `latest` and SHA tags
-3. Authenticate to GKE
-4. Deploy to Kubernetes cluster
-5. Verify rollout status
+The GitHub Actions push-to-GKE pipeline described here is retired along with the
+GKE deployment above. Cloud Run deploys are currently manual (`gcloud builds
+submit` + `gcloud run deploy`, see "Cloud Run" above) — no CI/CD wired up yet for
+the new path. The NAS side (`capture.py`/`sun.py`) is deployed by hand via `scp`,
+not from this repo's CI at all.
 
 ## Development
 

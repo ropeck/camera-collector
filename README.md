@@ -2,9 +2,14 @@
 
 Captures daily sunrise and sunset clips from the Seacliff Beach webcam (YouTube live stream),
 stores them in GCS, and serves a web gallery with monthly browsing and compilation generation.
-Runs on GKE with a Surfshark WireGuard VPN sidecar to avoid YouTube bot detection.
 
-Live: [weather.fogcat5.com](https://weather.fogcat5.com)
+> **Deployment (as of 2026-07-18):** split across Cloud Run (this app's API/gallery)
+> and a NAS (the actual VPN-dependent capture, still via Surfshark WireGuard, now
+> real kernel `wg-quick` instead of a k8s sidecar). GKE is retired. See
+> [PROJECT.md](PROJECT.md#deployment) for the full picture — the GKE/Kubernetes
+> sections in this README describe the old, now-inactive setup.
+
+Live: [weather.fogcat5.com](https://weather.fogcat5.com) (gallery/API), capture on `pi@nas.lan`
 
 ## Features
 
@@ -35,6 +40,11 @@ camera-collector/
 See [PROJECT.md](PROJECT.md) for full architecture docs.
 
 ## Deployment
+
+See [PROJECT.md](PROJECT.md#deployment) for the current split setup: the
+FastAPI app on Cloud Run (IAP-gated, with an open path for the public video
+archive viewer), capture on a NAS via systemd timers. The `kubectl apply -f
+k8s/` GKE flow below is retired (scaled to 0, not deleted).
 
 ```bash
 # Get GKE credentials
